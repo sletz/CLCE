@@ -14,11 +14,35 @@
 ;;              - pour la prise en compte du paramètre LCONTROL de GNOTES
 ;;          Modification 02 03 05: compatibilité de :sil avec les n-olets
 ;;          Modification 08 03 05: TRANSPOSE ET TRANSPOLISTE. Ajout dans :ltransp du type: (5) = liste de 1
+;;          Modif du 6 septembre 2012 pour tenir compte d'un layersynth à la date zéro (voir fonction NOTES")
+;;          Modif du 20 octobre 2012 pour éliminer le symbole de glisse qd l'ambitus de la glisse est 0
+;;          Modif du 4 décembre 2012 pour perfectionner la gestion des articulations et de l'accelerando
 ;;==============================================================================
 
 ;;         PRODUCTION DES NOTES MIDI ET PRÉ-ENIGMA (PARTITION FINALE)
 ;;         Ensemble des procédures de calcul de la score MIDI 
 ;;         et des données permettant la production d'un fichier de type ENIGMA
+
+
+;;        CONSTRUCTION DES *LISTEn* ou n est le n° de supercanal (liste de listes de 11 champs. Une liste par note))
+;;        Pour une note:
+;;        1- date (exprimée en noire )
+;;        2- supercanal (nombre entier)
+;;        3- durée (par exemple 1 ou (* (FDUR 2 3 D-N) 1)). Valeur négative pour un silence
+;;        4- liste de hauteur (exemple 65 77)
+;;        5- champ spécial: (99) pour grace-note, (254) pour marque de staccato
+;;                          (253 (0 4) (1 3)) pour glissando (liste des écarts de hauteur, liste des palliers)
+;;        6- vélocité (exprimée en entier)
+;;        7- textexpression: expression finale écrite quand la hauteur entre dans un intervalle 
+;;                          exemple: (((60 84) ...) (35 ...)) l'expression 35 est écrite quand la hauteur entre dans l'intervalle C3-C5
+;;        8- numéro d'expression (généralement nom de l'instrument) 
+;;                          quand un pgchange est envoyé à l'échantillonneur pour changer d'instrument (paramètre optionnel de prorythme.
+;;        9- n° de layer finale (nombre entier)
+;;        10- numéro d'expression finale quand un changement de groupe (Kontakt) ou de layer (machFive) est envoyé à l'échantillonneur.
+;;        11- liste de numéro d'articulation finale (accent, staccato ...).
+
+;;        Exemple de liste: (4/3 0 (* (FDUR 2 3 D-N) 1) (60.5) (253 (0 4) (1 3)) 120 NIL 85 1 NIL (3))   3 est le n° de l'articulation ">"
+
 
 ;;==============================================================================
 
@@ -47,11 +71,13 @@
 
 (defvar *totrythm*)
 
+
+
 ;;------------------------------------------------------------- 
 
 
 ;;============================================================
-;; Une liste par canal généralisé (de 0 à 31)
+;; Une liste par canal généralisé (de 0 à 47)
 ;; Chaque liste stocke les infos en vue de la partition FINALE
 ;;============================================================
 
@@ -109,14 +135,29 @@
 (defvar *lprov-GF* nil)      ;; liste provisoire de GF (type de codage ENIGMA)
 
 
-(defvar *etat-pgchge* (make-array 32))  ;; Fabrication d'un tableau de 32
+(defvar *etat-pgchge* (make-array 48))  ;; Fabrication d'un tableau de 48
+(defvar *etat-ctrl-chge* (make-array 48)) ; Pour mémoriser l'état des controleurs pour n-gnotes
+(defvar *etat-ctrl-chge2* (make-array 48))   ;comme ci-dessus mais pour gnotes au lieu de n-gnotes
+(defvar *etat-expressionlayer* (make-array 48))   ;comme ci-dessus mais pour les couches (layers) des échantillonneurs
 
-(defun init-array (a)
-  (dotimes (i 32)
-      (setf (aref a i) -1)))            ;; Pour initialiser ultérieurement le tableau *etat-pgchge*
+;(defvar *haut-acceler* 0)   ;pour gérer les grace-note en cas d'accelerando
 
 
-(defun init-listes ()                   ;; Procédure d'initialisation des listes et du tableau *etat-pgchge*
+
+(defun init-array (a val)
+  (dotimes (i 48)
+      (setf (aref a i) val)))            ;; Pour initialiser ultérieurement les tableaux *etat-pgchge* et *etat-pgchge2* et *etat-expressionlayer*
+
+;; 27 09 2011
+;; Ces variables utilisée par n-prorythme via n-gnotes mémorisent par canal l'état du control change
+;; du key paramètre de n-gnotes: lcontrole-chge sous forme de liste: 
+;; (vn=compteur, nbre=nombre de note conservant la même valeur de controleur, pedale=état1 (T) ou état2 (nil) de la valeur en cours du controleur)
+;; si =nil alors pas de controleur
+
+
+
+
+(defun init-listes ()                   ;; Procédure d'initialisation des listes, du tableau *etat-pgchge* et du tableau *etat-ctrl-chge*
   (setq *liste0* nil)
   (setq *liste1* nil)
   (setq *liste2* nil)
@@ -165,7 +206,10 @@
   (setq *liste45* nil)
   (setq *liste46* nil)
   (setq *liste47* nil)
-  (init-array *etat-pgchge*))
+  (init-array *etat-pgchge* -1)
+  (init-array *etat-ctrl-chge* nil)
+  (init-array *etat-ctrl-chge2* nil)
+  (init-array *etat-expressionlayer* nil))
 
 (defun init ()                        ;; Initialisation complète avant calculs
   (init-listes)
@@ -295,22 +339,29 @@
 |#
 
 
+
+;; modif du 6 septembre 2012 pour tenir compte d'un layersynth à la date zéro
+
 (defun notes ( chan dur h1 ltransp vel pgchange port stac) ;(print (list chan (/ (date?) noi) dur h1 (round h1) pgchange "NOTES"))
-       (if (> (date?) 0) (p-rel -1))   ; 28 08 01 on ne peut pas reculer le pointeur à la date 0 !
-       (midi-write-ev *out* (pitch-bend :chan chan :bend (round (* (/ 8192 *bend*) (- h1 (round h1)))) :port port))
+  (if (> (date?) 0) (p-rel -1))   ; 28 08 01 on ne peut pas reculer le pointeur depuis la date 0 !
+  (midi-write-ev *out* (pitch-bend :chan chan :bend (round (* (/ 8192 *bend*) (- h1 (round h1)))) :port port))
        ;(midi-write-ev *out* (ctrl-change :ctrl 7 :value 127  :chan chan :port port))   ; 28 08 01 ; suppression le 19 Février 2005 à cause des générateurs de volume
-       (if (> (date?) 0) (p-rel +1))   ; 28 08 01
+  (if (> (date?) 0) (p-rel +1))   ; 28 08 01
        
-       (if pgchange (place-pgchange chan port pgchange))  ;; 24 10 01
+  (if pgchange (place-pgchange chan port pgchange))  ;; 24 10 01
        
-;; le 4 mai 2007 changement de truncate en round ci-dessous       
-       
-       (if (> dur 32000) 
-         (let ((d (date?))) 
-           (midi-write-ev *out* (key-on :pitch (transpose ltransp (round h1)) :vel vel :chan chan :port port))
-           (midi-write-ev *out* (key-off :pitch (transpose ltransp (round h1))  :vel vel :chan chan :port port) :date (+ (- (floor (* dur stac)) 1) (date?)))
-           (p-abs d))
-       (midi-write-ev *out* (note :pitch (transpose ltransp (round h1)) :dur (- (floor (* dur stac)) 1) :vel vel :chan chan :port port))))
+  ;; le 4 mai 2007 changement de truncate en round ci-dessous       
+  (let ((d (date?)))
+    (if (= d 0)
+        (p-abs 1))     ;; si la date est zéro on décale la date de la note de +1 pour envoyer avant cette note la note de changement de layersynth
+    (if (> dur 32000) 
+        (progn
+          (midi-write-ev *out* (key-on :pitch (transpose ltransp (round h1)) :vel vel :chan chan :port port))
+          (midi-write-ev *out* (key-off :pitch (transpose ltransp (round h1))  :vel vel :chan chan :port port) :date (+ (- (floor (* dur stac)) 1) (date?)))
+          (p-abs d))
+      (progn
+      (midi-write-ev *out* (note :pitch (transpose ltransp (round h1)) :dur (- (floor (* dur stac)) 1) :vel vel :chan chan :port port))
+      (p-abs d)))))
 
 
 
@@ -330,16 +381,219 @@
         (max (apply #'max l)))
     (if (and (> x min) (< x max)) t nil)))
 
-(defun noteliste (chan numexpression laccord datenoire dursymb listhaut ltextexpres grace vel layer)
-  ;(print (list datenoire dursymb listhaut))
-  (notelist chan numexpression laccord datenoire dursymb listhaut ltextexpres grace vel layer (split? 60 listhaut)))
+
+;; rend une liste de couple (hauteur n°-expression-finale) pour chaque valeur unique de canal de :laccord
+;; l1 correspond à Laccord
+;; l2 correspond à llayersynthe
+
+(defun listelayer (l1 l2) 
+  (if l1 (listlayer l1 l2 nil nil) l2))
+
+(defun listlayer (l1 l2 &optional lchan lresult) 
+  (if l1
+      (let ((a (car l1))) 
+        (if (member a lchan)
+            (listlayer (cdr l1) l2 lchan (cons nil lresult))
+          (listlayer (cdr l1) (cdr l2) (cons a lchan) (cons (car l2) lresult))))
+     (reverse lresult)))
+
+;;(listelayer '(0 0 2 2 8 1) '((60 23) (72 47) (80 23))) --> ((60 23) NIL (72 47) NIL (80 23) NIL)
+;;(listelayer nil '(60 47)) --> (60 47)
 
 
-(defun notelist (chan pgchange laccord datenoire dursymb listhaut ltextexpres grace vel layer split)
+
+         
+#|  
+|#
+
+(defvar *base-ambitus-glis*) ;donne la valeur d'articulation des chiffres (1, 2, 3 ...) pour inscrire les ambitus des glissandi
+
+(setq *base-ambitus-glis*
+      '(
+        (1 23)
+        (2 25)
+        (3 26)
+        (4 27)
+        (5 28)
+        (6 69)
+        (7 70)
+        (8 71)
+        (9 72)
+        (10 73)
+        (11 74)
+        (12 75)
+        (0 76)
+        (-1 77)
+        (-2 78)
+        (-3 79)
+        (-4 80)
+        (-5 81)
+        (-6 82)
+        (-7 83)
+        (-8 84)
+        (-9 85)
+        (-10 86)
+        (-11 87)
+        (-12 88)))
+
+(defun art-glis (l)
+  (if (> (length l) 1) '(51) ; glissando varié
+    (if (> (car l) 0) (list 52 (second (assoc (car l) *base-ambitus-glis*))) ; glissando ascendant
+      (list 53 (second (assoc (car l) *base-ambitus-glis*)))))) ; glissando descendant 
+  
+
+
+(defun autre-articulion (l)
+  (let ((n (length l)))
+    (cond
+     ((= n 3) (art-glis (cadr l))) ;type glissando seul: (253 (7 -2) nil)
+     ((= n 2) (if (numberp (car l)) (cons 1 (art-glis (second (second l))))   ; type staccato et glissando (254 (253 (7 -2) nil)) 
+               (cons 1 (art-glis(second (car l)))))))))  ; type glissando et staccato ((253 (7 -2) nil) 254)
+
+ 
+
+
+;****************************************************************************************************************************
+; retourne la liste des articulations liées a la variation des hauteurs de l'accelerando
+
+(defun articul-glisse (laccelerando ecar-accelerando dur)
+  (let* ((dd1 (* noi (first laccelerando)))
+         (dd2 (* noi (second laccelerando)))
+
+         (q (raison2 dur dd1 dd2)) 
+         (ldur (if (or (<= dur dd1) (<= dur dd2) ) (list dur) (listaccelerando dur dd1 dd2 q)))
+         (n (length ldur))
+         (lecar (if (fifth laccelerando) (l n (g ecar-accelerando)) ;--> calcul de la suite des écarts de hauteurs de l'accelerando
+                  (l n ecar-accelerando)))
+         ;(lecar (l n (eval(fourth laccelerando)))) 
+         (a1 (first lecar))
+         (a2 (car (last lecar)))
+         (dif (- a2 a1))
+         (typlist (type-liste lecar)))
+    (cond
+     ((= typlist 1) nil) ; pas d'articulation
+     ((= typlist 2) (list 52 (second (assoc (floor dif) *base-ambitus-glis*)))) ; marque croissant + ambitus
+     ((= typlist 3) (list 53 (second (assoc (floor dif) *base-ambitus-glis*)))) ; marque decroissant + ambitus négatif
+     ((= typlist 4) (let ((max (apply #'max lecar))
+                          (min (apply #'min lecar)))
+                      (list 89 (second (assoc (floor min) *base-ambitus-glis*)) (second (assoc (floor max) *base-ambitus-glis*))))) ; marque de variation qq
+     (t nil)))) 
+
+
+
+;--------------------
+
+(defun articul-glisse (laccelerando ecar-accelerando dur)
+  (let* ((dd1 (* noi (first laccelerando)))
+         (dd2 (* noi (second laccelerando)))
+
+         (q (raison2 dur dd1 dd2)) 
+         (ldur (if (or (<= dur dd1) (<= dur dd2) ) (list dur) (listaccelerando dur dd1 dd2 q)))
+         (n (length ldur))
+         (lecar (if (fifth laccelerando) (l n (g ecar-accelerando)) ;--> calcul de la suite des écarts de hauteurs de l'accelerando
+                  (l n ecar-accelerando)))
+         ;(lecar (l n (eval(fourth laccelerando)))) 
+         (a1 (first lecar))
+         (a2 (car (last lecar)))
+         (dif (- a2 a1))
+         (typlist (type-liste lecar))
+         (max (apply #'max lecar))
+         (min (apply #'min lecar)))
+    (cond
+     ((= typlist 1) nil) ; pas d'articulation
+     ;((= typlist 2) (list 52 (second (assoc (floor dif) *base-ambitus-glis*)))) ; marque croissant + ambitus
+     ;((= typlist 3) (list 53 (second (assoc (floor dif) *base-ambitus-glis*)))) ; marque decroissant + ambitus négatif
+     ((= typlist 2) (list 52 (second (assoc (floor min) *base-ambitus-glis*)) (second (assoc (floor max) *base-ambitus-glis*)))) ; marque croissant + ambitus
+     ((= typlist 3) (list 53 (second (assoc (floor min) *base-ambitus-glis*)) (second (assoc (floor max) *base-ambitus-glis*)))); marque decroissant + ambitus négatif
+     ((= typlist 4)  (list 89 (second (assoc (floor min) *base-ambitus-glis*)) (second (assoc (floor max) *base-ambitus-glis*)))) ; marque de variation qq
+     (t nil))))
+     
+
+;****************************************************************************************************************************
+;       NOTELISTE                   prépare la construction des *listeN* en construisant la liste des articulations
+;****************************************************************************************************************************
+
+
+(defun noteliste (chan numexpression laccord datenoire dursymb listhaut ltextexpres grace vel layer llayersynthe laccelerando ecar-accelerando)
+  ;(print (list "noteliste datenoire dursymb listhaut grace *haut-acceler*  " datenoire dursymb listhaut grace *haut-acceler*))
+  ;(print (list "noteliste laccelerando dursymb grace=  " laccelerando dursymb grace))
+  ;(print (list "noteliste dursymb  " dursymb))
+
+
+  ; transformation de grace de code 253 254 255 en code articulation enigma: 1 pour stac ou 51 pour glisse
+
+  (let ((granote nil)
+        (l-articulation nil))
+ 
+    (cond
+     ((and (numberp (car grace)) (< (car grace) 100)) (setq granote t))  ; grace note
+     ((and (numberp (car grace)) (= (car grace) 255)) (setq granote nil)) ; pour la forme! (note normale sans articulation)
+     ((and (numberp (car grace)) (= (car grace) 254) (= (length grace) 1)) (setq l-articulation '(1))) ; note normale avec staccato
+     (t (setq l-articulation (autre-articulion grace)))) ; note normale avec staccato et glissando
+
+
+   ; (print (list "noteliste grace granote l-articulation  " grace granote l-articulation ))
+
+                            
+    (if laccelerando
+
+        (let ((d1 (first laccelerando))
+              (d2 (second laccelerando))
+              (cresc (third laccelerando))
+              (accent (fourth laccelerando)))
+
+#| 
+
+|# 
+
+          (if (> accent 0) (setq l-articulation (cons 3 l-articulation))) ;grace note ou note normale avec accent
+
+          (if (not granote) 
+            ;; non grace note:
+            (progn
+            (setq l-articulation (append (articul-glisse laccelerando ecar-accelerando (* noi (eval dursymb))) l-articulation)) ; articulations liées a la variation des hauteurs de l'accelerando
+            
+         
+              (cond
+               ((< d1 d2) (setq l-articulation (cons 65 l-articulation)))  ;marque d'articulation finale d'accelerando
+               ((> d1 d2) (setq l-articulation (cons 66 l-articulation)))  ;marque d'articulation finale de rallentando
+               ((= d1 d2) (setq l-articulation (cons 90 l-articulation)))) ;marque d'articulation finale de décomposition égale
+
+
+              (cond
+               ((> cresc 0) (setq l-articulation (cons 68 l-articulation))) ;marque finale de crescendo
+               ((< cresc 0) (setq l-articulation (cons 67 l-articulation)))
+               ((= cresc 0) t))))
+
+          ;(if granote (setq *haut-acceler* 0)
+           ; (setq *haut-acceler* (car (l 1 (eval (fourth laccelerando)))))) ;on calcule la première valeur du générateur de hauteur de l'accelerando
+
+         ; (setq listhaut (mapcar #'(lambda (x) (+ x *haut-acceler*)) listhaut))
+          ))
+          
+
+   ; (print (list "ici noteliste l-articulation listhautdursymb  = " l-articulation listhaut dursymb))
+
+    (notelist chan numexpression laccord datenoire dursymb listhaut ltextexpres grace vel layer (listelayer laccord llayersynthe) (split? 60 listhaut) l-articulation)))
+
+
+
+
+
+
+(defun notelist (chan pgchange laccord datenoire dursymb listhaut ltextexpres grace vel layer newllayersynthe split articulation)
+
+   ;(print (list "notelist chan laccord listhaut newllayersynthe  " chan laccord listhaut newllayersynthe))
+   ;(print (list "notelist articulation=  " articulation))
+  
+   
   (when laccord
     (if (>= (+ chan (car laccord)) 0)
-    (noteli (nchan (+ chan (car laccord))) pgchange (nport (+ chan (car laccord))) datenoire dursymb (list (car listhaut)) ltextexpres grace vel layer split))
-    (notelist chan pgchange (cdr laccord) datenoire dursymb (cdr listhaut) ltextexpres grace vel layer split)))
+        (progn  
+          (noteli (nchan (+ chan (car laccord))) pgchange (nport (+ chan (car laccord))) datenoire dursymb (list (car listhaut)) ltextexpres grace vel layer (car newllayersynthe) split articulation)))
+    (notelist chan pgchange (cdr laccord) datenoire dursymb (cdr listhaut) ltextexpres grace vel layer (cdr newllayersynthe) split articulation)))
+
+
 
 (defun cherchexpression (chan l)   ;; recherche si une expression (au sens FINALE) est associée au canal 24 10 01
   (if l
@@ -347,15 +601,51 @@
 
 
 
-(defun noteli ( chan pgchange port datenoire dursymb listhaut ltextexpres grace vel layer split) 
+#|
+
+|#
+
+
+(defun f-layersynth (datenoire superchan couplelayer listhaut &optional (expressionlayer nil)) 
+  (if (and couplelayer (> (car listhaut) 0))
+      (if (eq (first couplelayer) (aref *etat-expressionlayer* superchan))  
+          (setq expressionlayer nil)                       ;on reste dans le même layer de l'échantilonneur
+        (let ((d (date?)))
+          (p-abs (- (* noi datenoire) 100))
+          (midi-write-ev *out* (note :pitch (first couplelayer)  :dur noi :vel 10 :chan (nchan superchan) :port (nport superchan)))
+          (p-abs d) ;on remet le pointeur à sa position antérieure
+          (setf ( aref *etat-expressionlayer* superchan) (first couplelayer))
+          (setq expressionlayer (second couplelayer)))
+
+        ))
+  expressionlayer)
+
+
+
+
+;; construction des listes *listen* composées de 10 valeurs
+
+(defun noteli ( chan pgchange port datenoire dursymb listhaut ltextexpres grace vel layer couplelayer split articulation) 
+  
   (declare (ignore split))
+
+  ;(print (list "noteli articulation="articulation))
+  ;(print (list "noteli chan=" chan "port=" port "couplelayer=" couplelayer))
+  ;(print (list "noteli listhaut"listhaut))
+  ;(print (list "noteli dursymb"dursymb))
+
   (let* ((superchan (+ chan (* port 16)))
-         (y (list datenoire superchan dursymb listhaut grace vel ltextexpres (if pgchange (cherchexpression superchan pgchange) nil) layer))      
-         ;; création le 18 10 01 d'un septième champ dans les listes de notes
-         ;(yy (list datenoire chan (changder dursymb) listhaut grace vel))     ;; en direction de FINALE. Ce 7eme champ code les TEXTES EXPRESSIONS
-         )                                                                     ;; création d'un huitième champ qui code les expressions associées aux pgchange 24 10 01
+         (expreslayersynthe (f-layersynth datenoire superchan couplelayer listhaut))
+         ;(articul (if articulation (if (> articulation 0) (list 3) nil) nil))
+         (y (list datenoire superchan dursymb listhaut grace vel ltextexpres (if pgchange (cherchexpression superchan pgchange) nil) layer expreslayersynthe articulation)))
+    ;(print (list "noteli expreslayersynthe y=" expreslayersynthe y))
+
+   
+    ;; création le 18 10 01 d'un septième champ dans les listes de notes
+    ;;(yy (list datenoire chan (changder dursymb) listhaut grace vel))     ;; en direction de FINALE. Ce 7eme champ code les TEXTES EXPRESSIONS
     ;; de la forme nil si pas de pgchange num-expression-finale sinon
-    ;; crtéation le 11 11 01 d'un 9eme champ spécifiant le num de layer FINALE (1 par default)
+    ;; création le 11 11 01 d'un 9eme champ spécifiant le num de layer FINALE (1 par default)
+    ;; création le 11 04 2012 d'un 10eme champ permettant le changement de layer de l'échantilloneur et l'écriture du nom de ce layer dans la partition
     
     
     (cond 
@@ -711,24 +1001,181 @@
 ;;               Traitement des trilles
 ;;-------------------------------------------------------------------------------
 
+ ; (defun notes-accord (chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar laccelerando)  
+;;(print (list "notes-accord laccord" laccord))
+; ;   (if (= arpegecar 0) (notes-accord-ord chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar laccelerando)
+ ; ;    (notes-accord-arp chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar laccelerando)))
 
-(defun notes-accord (chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar)  
-  ;(print (list "notes-accord laccord" laccord))
-  (if (= arpegecar 0) (notes-accord-ord chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar)
-      (notes-accord-arp chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar)))
+; ; (defun notes-accord (chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar laccelerando)  
+ ; ;(print (list "notes-accord laccord" laccord))
+ ; ;  (if (= arpegecar 0) (notes-accord-ord chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar laccelerando)
+  ; ;   (if laccelerando
+   ; ;      (progn
+    ; ;       (print "on ne peut pas arpéger un accelerando!")
+    ;  ;      (abort)) 
+      ; ; (notes-accord-arp chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar ))))
 
 
-(defun notes-accord-ord (chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar) 
-  ;(print (list "note-accord-ord laccord" laccord))
+
+;;; modif accelerando du 05 05 2012
+
+(defun notes-accord (chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar laccelerando ecar-accelerando ) ;(print (list "note-accord h laccord lecar" haut laccord lecar)) 
+  (cond ((and laccelerando (not (= arpegecar 0))) (print "on ne peut pas arpéger un accelerando!") (abort))
+        ((and laccelerando (= arpegecar 0)) (notes-accord-accelerando chan pgchange stac dur haut ltransp vel laccord lecar lapog laccelerando ecar-accelerando)) 
+        ;(print (list "accelerando: dur d1 d2" dur (* noi (first laccelerando)) (* noi (second laccelerando)))))
+        ((and (not laccelerando) (not (= arpegecar 0))) (notes-accord-arp chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar ))
+        (t (notes-accord-ord chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar laccelerando))))
+
+
+
+
+;;; retourne la racine n-ième de a
+(defun racine-n (a n)
+  (exp (* (/ 1 n) (log a))))
+
+;;; retourne la longueur de la progression géométrique pour aller des durées d1 à d2 avec une somme de d
+(defun n-occurence2 (d d1 d2) 
+  (if (or (>= d1 d) (>= d2 d))
+      (progn (print (list "la note n'a pas une durée suffisament longue" d d1 d2))
+        (abort)))
+  (if (= d1 d2) (/ d d1)
+    (+ 1 (/ (log (/ d2 d1)) (log (/ (- d d1) (- d d2)))))))
+
+;(n-occurence2 20160 2520 315)
+;(n-occurence2 20160 315 2520)
+
+
+;;; retourne la raison de la progression géométrique pour aller des durées d1 à d2 avec une somme de d
+(defun raison2 (d d1 d2) 
+  (if (>= d1 d2)
+      (racine-n (/ d2 d1) (- (n-occurence2 d d1 d2) 1))
+    (/ 1 (racine-n (/ d2 d1) (- (n-occurence2 d d1 d2) 1)))))
+
+;;; retourne la liste de durée de la progression géométrique pour aller des durées d1 à d2 avec une somme de d
+
+
+
+;(defun listaccelerando (d d1 d2 coef &optional (rev nil)) ;(print "listaccelerando")
+
+;  (if (> d2 d1)
+;      (progn
+;        (setq rev t)
+;        (setq a d1)
+;        (setq d1 d2)
+;        (setq d2 a)))
+;  (listaccelerando2 d d1 d2 coef d1 coef (list d1) rev))
+
+(defun listaccelerando (d d1 d2 coef &optional (rev nil)) ;(print "listaccelerando")
+
+  (if (> d2 d1)
+      (let (a)
+        (setq rev t)
+        (setq a d1)
+        (setq d1 d2)
+        (setq d2 a)))
+  (listaccelerando2 d d1 d2 coef d1 coef (list d1) rev))
+
+   
+(defun listaccelerando2 (d d1 d2 coef s c l rev)  
+  (if (< s d)
+      (listaccelerando2 d d1 d2 coef (+ s (floor (* d1 c))) (* c coef) (cons (floor (* d1 c)) l) rev)
+    (if rev
+        l (reverse l))))
+
+; rend une liste de n valeurs v
+(defun list-n (n v)
+  (let (l)
+    (dotimes  (i n) (push  v l))
+    l))
+
+; supprime les n premiers termes de la liste l
+(defun enleve (l n)
+  (if (< (length l) n) (print "enleve; liste trop courte")
+    (if (> n 0)
+        (enleve (cdr l) (1- n)) l)))
+     
+
+
+
+;; remplace les n premiers termes de la liste l par la valeur v
+(defun change-n (l n v)
+  (if (<= (length l) n) (list-n n v)
+    (append (list-n n v) (enleve l n))))
+
+; (change-n '(1 2 3 4 5) 2 100) --> (100 100 3 4 5)
+
+
+;(listaccelerando 20160 30000 2520 0.8888889) --> ("accelerando: durée " 20160 " trop courte")
+;(listaccelerando 20160 2520 315 0.8888889) --> (2520 2240 1991 1769 1573 1398 1243 1104 982 873 776 689 613 545 484 430 382 340 302)
+;(listaccelerando 20160 315 2520 0.8888889) --> (302 340 382 430 484 545 613 689 776 873 982 1104 1243 1398 1573 1769 1991 2240 2520)
+
+;; écrit les notes simples ou d'accord en formule accelarando     make-contr (spechan d lcontrol)
+
+
+
+
+
+;****************************************************************************************************************************
+;      NOTES-ACCORD-ACCELERANDO             fabrique les notes MIDI de l'accelerando
+
+; ecar-accelerando est un nombre si (fifth laccelerando)=t: temps global - évaluation dans evenement
+; ecar-accelerando est un nombre si (fifth laccelerando)=nil: temps local - évaluation ici par l
+;****************************************************************************************************************************
+
+
+(defun notes-accord-accelerando (chan pgchange stac dur haut ltransp vel laccord lecar lapog  laccelerando ecar-accelerando) 
+  (print (list "notes-accord-accelerando laccelerando haut dur lapog="  laccelerando haut dur lapog)) 
+  (let* ((d1 (* noi (first laccelerando)))
+         (d2 (* noi (second laccelerando)))
+
+         (q (if (= dur 629) 1 (raison2 dur d1 d2))) 
+         (ldur (if (or (<= dur d1) (<= dur d2) (= dur 629)) (list dur) (listaccelerando dur d1 d2 q)))
+
+         (n (length ldur))
+         (lvel (l n (g vel)))
+         ;(lvol (l n (eval(third laccelerando))))
+         (lhaut (if (fifth laccelerando) (mapcar #' (lambda (x) (+ x haut)) (l n (g ecar-accelerando)))
+                  (mapcar #' (lambda (x) (+ x haut)) (l n ecar-accelerando)))) ;--> calcul de la suite des hauteurs de l'accelerando = hauteur de base + liste des écarts
+         (dat (date?))
+         (nvel (fourth laccelerando)))
+    
+    ;(print (list "notes-accord-accelerando lapog lhaut ldur (first lhaut) (last lhaut) = " lapog lhaut ldur (first lhaut) (last lhaut))) ;---------------
+ 
+    (if (> nvel 0) (setq lvel (change-n lvel (length lapog) nvel)))
+
+    (when laccord
+      (if (>= (+ chan (car laccord)) 0)
+          (notes-accord-acceler (nchan (+ chan (car laccord)))  (nport (+ chan (car laccord))) pgchange stac ldur lhaut ltransp lvel (car lecar) lapog))
+      (p-abs dat)
+      (notes-accord-accelerando chan pgchange stac dur haut ltransp vel (cdr laccord) (cdr lecar) lapog  laccelerando ecar-accelerando))))
+
+
+
+
+
+
+;; écrit les notes simples en formule accelarando pour une voix d'accord
+(defun notes-accord-acceler (n-chan n-port pgchange stac ldur lhaut ltransp lvel h-accord lapog) ;print (list "notes-accord-acceler lhaut" lhaut))
+  (when lhaut
+    (notes n-chan (car ldur) (+ (car lhaut) (car lapog) h-accord) ltransp (car lvel) pgchange n-port stac)
+    (p-rel (car ldur))
+    (notes-accord-acceler n-chan n-port pgchange stac (cdr ldur) (cdr lhaut) ltransp (cdr lvel) h-accord lapog)))
+
+
+
+
+
+(defun notes-accord-ord (chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar laccelerando) 
+  ;(print (list "note-accord-ord haut laccord lecar "  haut laccord lecar ))
   (when laccord
     (if (>= (+ chan (car laccord)) 0)
       (notes (nchan (+ chan (car laccord))) dur (+ haut (car lapog) (car lecar)) ltransp vel pgchange (nport (+ chan (car laccord))) stac))
-    (notes-accord-ord chan pgchange stac dur haut ltransp vel (cdr laccord) (cdr lecar) lapog arpegecar)))
+    (notes-accord-ord chan pgchange stac dur haut ltransp vel (cdr laccord) (cdr lecar) lapog arpegecar laccelerando)))
 
 
 
 (defun notes-accord-arpe (d chan pgchange stac dur haut ltransp vel laccord lecar lapog arpegecar i) 
-  ;(print (list "notes-accord-arpe lapog date arpegecar" lapog (date?) arpegecar))
+ ; (print (list "notes-accord-arpe lapog date arpegecar" lapog (date?) arpegecar))
   (when laccord
     (if (>= (+ chan (car laccord)) 0)
       (progn (p-abs (+ d (* i arpegecar))) 
@@ -749,24 +1196,86 @@
 
 
 
+;; ******************************************
+;; retourne t si la liste ne contient que des zéros ou est vide
+(defun liste0 (l)
+  (if l
+      (if (not (= 0 (car l))) nil
+        (liste0 (cdr l)))
+    t))
 
 
 
-(defun note-non-trille (chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer ldurgliss lhautgliss) 
-  ;(print (list "note-non-trille dur" dur)) 
+
+
+;; ******************************************
+;; retourne t 1, 2, 3 ou 4 suivant que la liste est constante, croissante, décroissante ou quelconque: type-liste '(1 2 3)) --> 2
+
+(defun type-liste (l)
+  (if l
+      (cond
+       ((liste-constante (cdr l) (car l)) 1)
+       ((liste-croissante (cdr l) (car l)) 2)
+       ((liste-decroissante (cdr l) (car l)) 3)
+       (t 4))
+    nil))
+   
+
+(defun liste-constante (l ref)
+  (if l
+     (if (= (car l) ref) 
+         (liste-constante (cdr l) ref)
+       nil)
+    t))
+
+;----------------
+
+(defun liste-croissante (l ref)
+  (if l
+     (if (>= (car l) ref) 
+         (liste-croissante (cdr l) (car l))
+       nil)
+    t))
+
+;----------------
+
+(defun liste-decroissante (l ref)
+  (if l
+     (if (<= (car l) ref) 
+         (liste-decroissante (cdr l) (car l))
+       nil)
+    t))
+
+
+    
+
+
+
+(defun note-non-trille (chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando) 
+  ;(print (list "note-non-trille dur laccord lhautgliss stac" dur laccord lhautgliss stac)) 
   (if (> (eval dur) 0)
-    (if (and lapog (> (floor (* noi (eval dur) stac)) (* 630 (length lapog))))
-      (apogiatu1 chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer) 
+      (if (and lapog (> (floor (* noi (eval dur) stac)) (* 630 (length lapog))))
+          (apogiatu1 chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer llayersynthe laccelerando ecar-accelerando) 
       
-      (notes-accord chan pgchange stac (floor (* noi (special-evaluate dur))) haut ltransp vel laccord lecar '(0) arpegecar))) ; on ne multiplie pas par stac (fait dans notes)
-  (let ((pgrace '(255)))   ; le 27 08 01
-    ;;    (if (not(= 1 stac)) (setq pgrace '(254)))   ; le 27 08 01
-    (if (< stac 1) (setq pgrace '(254)))   ; le 27 08 01 et remodif le 14 Mars 2005
-    (if lhautgliss (setq pgrace (list 253 lhautgliss ldurgliss)))   ; le 28 08 01
-    (noteliste chan pgchange laccord (/ (date?) noi) dur (transpoliste ltransp haut lecar) ltextexpres pgrace vel layer))
+        (notes-accord chan pgchange stac (floor (* noi (special-evaluate dur))) haut ltransp vel laccord lecar '(0) arpegecar laccelerando ecar-accelerando))) ; on ne multiplie pas par stac (fait dans notes)
+
+  (let ((pgrace))
+    (if (< stac 1)
+        (if (and lhautgliss (not (liste0 lhautgliss)))
+            (setq pgrace (list 254 (list 253 lhautgliss ldurgliss)))
+          (setq pgrace '(254)))
+      (if (and lhautgliss (not (liste0 lhautgliss)))
+          (setq pgrace (list 253 lhautgliss ldurgliss))
+        (setq pgrace '(255))))
+ ;(print (list "note-non-trille pgrace " pgrace))
+     
+    (noteliste chan pgchange laccord (/ (date?) noi) dur (transpoliste ltransp haut lecar) ltextexpres pgrace vel layer llayersynthe laccelerando ecar-accelerando))
   (p-rel (floor (* noi (abs (special-evaluate dur))))))
 
 
+#|
+
+|#
 
 (defun aproxrythm (x) ;; ********* force x à prendre les valeurs 1/16 1/8 ....1/2 1 2 4
   (cond ((< x 1/16) 1/16)
@@ -774,23 +1283,23 @@
         (t(nth (+ 4 (round (log x 2))) '(1/16 1/8 1/4 1/2 1 2 4)))))
 
 
-(defun note-trille (chan pgchange dur haut ltransp ltextexpres vel stac tril ecar laccord lecar lapog arpegecar layer ldurgliss lhautgliss) 
+(defun note-trille (chan pgchange dur haut ltransp ltextexpres vel stac tril ecar laccord lecar lapog arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando) 
   (if lapog
-    (note-tril-apog chan pgchange dur haut ltransp ltextexpres vel stac tril ecar laccord lecar lapog arpegecar layer ldurgliss lhautgliss) 
-    (note-tril-sans-apog chan pgchange (transforythm dur (eval (aproxrythm tril))) ecar haut ltransp ltextexpres vel stac laccord lecar arpegecar layer ldurgliss lhautgliss)))
+    (note-tril-apog chan pgchange dur haut ltransp ltextexpres vel stac tril ecar laccord lecar lapog arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando) 
+    (note-tril-sans-apog chan pgchange (transforythm dur (eval (aproxrythm tril))) ecar haut ltransp ltextexpres vel stac laccord lecar arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)))
 
 
-(defun note-tril-sans-apog (chan pgchange ldur ecar haut ltransp ltextexpres vel stac laccord lecar arpegecar layer ldurgliss lhautgliss) 
+(defun note-tril-sans-apog (chan pgchange ldur ecar haut ltransp ltextexpres vel stac laccord lecar arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando) 
        ;(print (list "note-tril-sans-apog" ldur (floor (* (length ldur) stac))))
        (let ((dat (date?)))
          ;(note-tr-midi (* (length ldur) stac) stac chan ldur haut vel laccord lecar ecar 0 arpegecar)
-         (note-tr-midi (length ldur) stac chan pgchange ldur haut ltransp vel laccord lecar ecar 0 arpegecar layer)
+         (note-tr-midi (length ldur) stac chan pgchange ldur haut ltransp vel laccord lecar ecar 0 arpegecar layer laccelerando ecar-accelerando)
          (p-abs dat))
-       (note-tr-finale  chan pgchange ldur haut ltransp ltextexpres vel laccord lecar ecar 0 stac layer ldurgliss lhautgliss))
+       (note-tr-finale  chan pgchange ldur haut ltransp ltextexpres vel laccord lecar ecar 0 stac layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))
 
 
-(defun note-tril-apog (chan pgchange dur haut ltransp ltextexpres vel stac tril ecar laccord lecar lapog arpegecar layer ldurgliss lhautgliss)
-  
+(defun note-tril-apog (chan pgchange dur haut ltransp ltextexpres vel stac tril ecar laccord lecar lapog arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)
+  (print (list "note-tr-finale stac lhautgliss stac lapog = " stac lapog lhautgliss))
   (if (> (eval dur) 0) 
     
     (let* ((dat (date?))
@@ -803,42 +1312,48 @@
       (if (and lapog (> (floor (* noi (eval dur) stac)) (* 630 (length lapog))))
         
         (progn  
-          (apogiatu1 chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer)
+          (apogiatu1 chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer llayersynthe laccelerando ecar-accelerando)
           (p-abs (+ f dat))
           ;(note-tr-midi (floor (* (length ldutr) stac)) stac chan ldutr haut ltransp vel laccord lecar ecar 0 arpegecar)  ;; attention ERREUR?
-          (note-tr-midi (floor (* (length ldutr))) stac chan pgchange ldutr haut ltransp vel laccord lecar ecar 0 arpegecar layer)
+          (note-tr-midi (floor (* (length ldutr))) stac chan pgchange ldutr haut ltransp vel laccord lecar ecar 0 arpegecar layer laccelerando ecar-accelerando)
           (p-abs dat)
-          (note-tr-finale chan pgchange ldur haut ltransp ltextexpres vel laccord lecar ecar 0 stac layer ldurgliss lhautgliss))
+          (note-tr-finale chan pgchange ldur haut ltransp ltextexpres vel laccord lecar ecar 0 stac layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))
         
         (progn 
-               (note-tr-midi (floor (* (length ldutr))) stac chan pgchange ldutr haut ltransp vel laccord lecar ecar 0 arpegecar layer)
+               (note-tr-midi (floor (* (length ldutr))) stac chan pgchange ldutr haut ltransp vel laccord lecar ecar 0 arpegecar layer laccelerando ecar-accelerando)
                (p-abs dat)
-               (note-tr-finale  chan pgchange ldur haut ltransp ltextexpres vel laccord lecar ecar 0 stac layer ldurgliss lhautgliss))))
-    (let ((pgrace '(255)))   ; le 27 08 01
-;;      (if (not(= 1 stac)) (setq pgrace '(254)))   ; le 27 08 01
-        (if (< stac 1) (setq pgrace '(254)))   ; le 27 08 01 et remodif le 14 Mars 2005
-      (if lhautgliss (setq pgrace (list 253 lhautgliss ldurgliss)))   ; le 28 08 01
-      (progn (noteliste chan pgchange laccord (/ (date?) noi) dur (transpoliste ltransp haut lecar) ltextexpres layer pgrace vel) 
+               (note-tr-finale  chan pgchange ldur haut ltransp ltextexpres vel laccord lecar ecar 0 stac layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))))
+
+  (let ((pgrace))
+    (if (< stac 1)
+        (if (and lhautgliss (not (liste0 lhautgliss)))
+            (setq pgrace (list 254 (list 253 lhautgliss ldurgliss)))
+          (setq pgrace '(254)))
+      (if (and lhautgliss (not (liste0 lhautgliss)))
+               (setq pgrace (list 253 lhautgliss ldurgliss))
+               (setq pgrace '(255))))
+
+      (progn (noteliste chan pgchange laccord (/ (date?) noi) dur (transpoliste ltransp haut lecar) ltextexpres layer pgrace vel llayersynthe laccelerando ecar-accelerando) 
              (p-rel (floor (* noi (abs (eval dur)))))))))
 
 
 
 
 
-(defun note-tr-midi (n stac chan pgchange ldur haut ltransp vel laccord lecar ecar alt arpegecar layer) 
+(defun note-tr-midi (n stac chan pgchange ldur haut ltransp vel laccord lecar ecar alt arpegecar layer laccelerando ecar-accelerando) 
    ;(print (list "note-tr-midi" ldur (date?)))
   (when (> n 0)
     (if (> (floor (* noi (eval (car ldur)))) 30000) (format t "note-tr-midi: chan dur lapog ~S ~S ~S ~%" chan ldur ecar))
     (cond                                                                                                                   ; 30 08 01
      ((> (eval (car ldur)) 0) 
-      (notes-accord chan pgchange stac (floor (* noi (eval (car ldur)))) (+ haut (* alt ecar)) ltransp vel laccord lecar '(0) arpegecar)
+      (notes-accord chan pgchange stac (floor (* noi (eval (car ldur)))) (+ haut (* alt ecar)) ltransp vel laccord lecar '(0) arpegecar laccelerando ecar-accelerando)
       (p-rel (floor (* noi (abs (eval (car ldur))))))
-      (note-tr-midi (1- n) stac chan pgchange (cdr ldur) haut ltransp vel laccord lecar ecar (- 1 alt) arpegecar layer))
+      (note-tr-midi (1- n) stac chan pgchange (cdr ldur) haut ltransp vel laccord lecar ecar (- 1 alt) arpegecar layer laccelerando ecar-accelerando))
      ((< (eval (car ldur)) 0) 
       (silenceliste chan (remove-duplicates laccord) (/ (date?) noi) (eval (car ldur)) layer)
       (p-rel (floor (* noi (abs (eval (car ldur))))))
-      (note-tr-midi (1- n) stac chan pgchange (cdr ldur) haut ltransp vel laccord lecar ecar alt arpegecar layer))
-     (t (note-tr-midi (1- n) stac chan pgchange (cdr ldur) haut ltransp vel laccord lecar ecar alt arpegecar layer)))
+      (note-tr-midi (1- n) stac chan pgchange (cdr ldur) haut ltransp vel laccord lecar ecar alt arpegecar layer laccelerando ecar-accelerando))
+     (t (note-tr-midi (1- n) stac chan pgchange (cdr ldur) haut ltransp vel laccord lecar ecar alt arpegecar layer laccelerando ecar-accelerando)))
     ))
 
 
@@ -846,23 +1361,31 @@
 
 
 
-(defun note-tr-finale ( chan pgchange ldur haut ltransp ltextexpres vel laccord lecar ecar alt stac layer ldurgliss lhautgliss)
+
+
+
+(defun note-tr-finale ( chan pgchange ldur haut ltransp ltextexpres vel laccord lecar ecar alt stac layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando) (print (list "note-tr-finale stac lhautgliss stac = " lhautgliss stac))
   (when ldur 
-    (let ((pgrace '(255)))   ; le 27 08 01
-      ;;      (if (not(= 1 stac)) (setq pgrace '(254)))   ; le 27 08 01
-      (if (< stac 1) (setq pgrace '(254)))   ; le 27 08 01 et remodif le 14 Mars 2005
-      (if lhautgliss (setq pgrace (list 253 lhautgliss ldurgliss)))   ; le 28 08 01
+
+      (let ((pgrace))
+    (if (< stac 1)
+        (if (and lhautgliss (not (liste0 lhautgliss)))
+            (setq pgrace (list 254 (list 253 lhautgliss ldurgliss)))
+          (setq pgrace '(254)))
+      (if (and lhautgliss (not (liste0 lhautgliss)))
+               (setq pgrace (list 253 lhautgliss ldurgliss))
+               (setq pgrace '(255))))
       
       (cond
        ((> (eval (car ldur)) 0)
-        (noteliste chan pgchange laccord (/ (date?) noi) (car ldur) (transpoliste ltransp (+ haut (* alt ecar)) lecar) ltextexpres pgrace vel layer)
+        (noteliste chan pgchange laccord (/ (date?) noi) (car ldur) (transpoliste ltransp (+ haut (* alt ecar)) lecar) ltextexpres pgrace vel layer llayersynthe laccelerando ecar-accelerando)
         (p-rel (floor (* noi (abs (eval (car ldur))))))
-        (note-tr-finale chan pgchange (cdr ldur) haut ltransp ltextexpres vel laccord lecar ecar (- 1 alt) stac layer ldurgliss lhautgliss))
+        (note-tr-finale chan pgchange (cdr ldur) haut ltransp ltextexpres vel laccord lecar ecar (- 1 alt) stac layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))
        ((< (eval (car ldur)) 0)
-        (noteliste chan pgchange laccord (/ (date?) noi) (car ldur) (transpoliste ltransp (+ haut (* alt ecar)) lecar) ltextexpres pgrace vel layer)
+        (noteliste chan pgchange laccord (/ (date?) noi) (car ldur) (transpoliste ltransp (+ haut (* alt ecar)) lecar) ltextexpres pgrace vel layer llayersynthe laccelerando ecar-accelerando)
         (p-rel (floor (* noi (abs (eval (car ldur))))))
-        (note-tr-finale chan pgchange (cdr ldur) haut ltransp ltextexpres vel laccord lecar ecar alt stac layer ldurgliss lhautgliss))
-       (t (note-tr-finale chan pgchange (cdr ldur) haut ltransp ltextexpres vel laccord lecar ecar alt stac layer ldurgliss lhautgliss))))))
+        (note-tr-finale chan pgchange (cdr ldur) haut ltransp ltextexpres vel laccord lecar ecar alt stac layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))
+       (t (note-tr-finale chan pgchange (cdr ldur) haut ltransp ltextexpres vel laccord lecar ecar alt stac layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))))))
          
    
 
@@ -880,39 +1403,42 @@
 ;;--------------------------
 
 
-(defun apogiatu1 (chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer) 
-  ;(print (list "APOGIATURE lapog arpegecar" lapog arpegecar))
+
+
+(defun apogiatu1 (chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer llayersynthe laccelerando ecar-accelerando) 
+  ;(print (list "APOGIATU1 lapog arpegecar" lapog arpegecar))
   (let ((dat (date?)))
-    (midi-apo dat chan pgchange dur haut ltransp vel stac laccord lecar lapog (length lapog) arpegecar 0)
+    (midi-apo dat chan pgchange dur haut ltransp vel stac laccord lecar lapog (length lapog) arpegecar 0 laccelerando ecar-accelerando)
     (p-abs dat)
-    (grace-enigma chan pgchange haut ltransp ltextexpres lapog vel laccord lecar layer (length lapog))
+
+    (grace-enigma chan pgchange haut ltransp ltextexpres lapog vel laccord lecar layer llayersynthe laccelerando ecar-accelerando (length lapog))
     (p-abs dat)))
 
          
        
 ;; création de midi-apopo le 28 05 2001 ***********************
 
-(defun midi-apopo (dat chan pgchange dur haut ltransp vel stac laccord lecar lapog n arpegecar)
+(defun midi-apopo (dat chan pgchange dur haut ltransp vel stac laccord lecar lapog n arpegecar laccelerando ecar-accelerando)
   
-  ;(print (list "midi-apopo dat dur" dat dur))
+  ;(print (list "midi-apopo dat dur laccord" dat dur laccord))
   (cond (lapog  
-         (notes-accord chan pgchange stac 629 haut ltransp vel laccord lecar lapog arpegecar)
+         (notes-accord chan pgchange stac 629 haut ltransp vel laccord lecar lapog arpegecar laccelerando ecar-accelerando)
          (p-rel 630)
-         (midi-apopo dat chan pgchange dur haut ltransp vel stac laccord lecar (cdr lapog) n arpegecar))
+         (midi-apopo dat chan pgchange dur haut ltransp vel stac laccord lecar (cdr lapog) n arpegecar laccelerando ecar-accelerando))
         (t  (if (> (- (floor (* noi (eval dur) stac)) (* 630 n) 2) 30000) (format t "midi-apo grand: chan dur lapog ~S ~S ~S ~%" chan dur lapog))
             (if (< (- (floor (* noi (eval dur) stac)) (* 630 n) 2) 0) (format t "midi-apo négatif: chan dur lapog n ~S ~S ~S ~S ~%" chan dur lapog n))
             ;(notes-accord chan stac (- (floor (* noi (eval dur) stac)) (* 630 n) 2) haut ltransp vel laccord lecar '(0) arpegecar)
-            (notes-accord chan pgchange stac (- (floor (* noi (eval dur))) (* 630 n) 2) haut ltransp vel laccord lecar '(0) arpegecar))))
+            (notes-accord chan pgchange stac (- (floor (* noi (eval dur))) (* 630 n) 2) haut ltransp vel laccord lecar '(0) arpegecar laccelerando ecar-accelerando))))
 
 ;; transformation de midi-apo le 28 05 2001 *********************** rajout de eval 01 2002 (pour le cas des n-olets!!
 
-(defun midi-apo (dat chan pgchange dur haut ltransp vel stac laccord lecar lapog n arpegecar i)
+(defun midi-apo (dat chan pgchange dur haut ltransp vel stac laccord lecar lapog n arpegecar i laccelerando ecar-accelerando)
   (p-abs (+ dat (* noi i (eval arpegecar))))
   (cond ((and lapog (> (length laccord) 1))
          ;(print (list "midi-apo i dat" i (date?)))
-         (midi-apopo (p-abs (+ dat (* noi i (eval arpegecar)))) (+ chan (car laccord)) pgchange dur (+ haut (car lecar)) ltransp vel stac '(0) '(0) lapog n arpegecar)
-         (midi-apo dat chan pgchange (- (eval dur) arpegecar) haut ltransp vel stac (cdr laccord) (cdr lecar) lapog n arpegecar (1+ i)))
-        (t (midi-apopo dat chan pgchange dur haut ltransp vel stac laccord lecar lapog n arpegecar))))
+         (midi-apopo (p-abs (+ dat (* noi i (eval arpegecar)))) (+ chan (car laccord)) pgchange dur (+ haut (car lecar)) ltransp vel stac '(0) '(0) lapog n arpegecar laccelerando ecar-accelerando)
+         (midi-apo dat chan pgchange (- (eval dur) arpegecar) haut ltransp vel stac (cdr laccord) (cdr lecar) lapog n arpegecar (1+ i) laccelerando ecar-accelerando))
+        (t (midi-apopo dat chan pgchange dur haut ltransp vel stac laccord lecar lapog n arpegecar laccelerando ecar-accelerando))))
 
 
 
@@ -928,13 +1454,14 @@
 ;; (255): note normale (non grace note)
 
 
-(defun grace-enigma (chan pgchange haut ltransp ltextexpres lapog vel laccord lecar layer &optional (p 0))
+(defun grace-enigma (chan pgchange haut ltransp ltextexpres lapog vel laccord lecar layer llayersynthe laccelerando ecar-accelerando &optional (p 0)) 
+  ;(print (list "grace-enigme: p= lpod= haut=" p lapog haut))
   (when lapog
     (let ((grace (cond ((= 1 p) '(0))
                        ((not (cdr lapog)) '(99))
                        (t (list (1+ (- p (length lapog))))))))
-      (noteliste chan pgchange laccord (/ (date?) noi) 1/2 (transpoliste ltransp (+ haut (car lapog)) lecar) ltextexpres grace vel layer))
-      (grace-enigma chan pgchange haut ltransp ltextexpres (cdr lapog) vel laccord lecar layer p)))
+      (noteliste chan pgchange laccord (/ (date?) noi) 1/2 (transpoliste ltransp (+ haut (car lapog)) lecar) ltextexpres grace vel layer llayersynthe laccelerando ecar-accelerando))
+      (grace-enigma chan pgchange haut ltransp ltextexpres (cdr lapog) vel laccord lecar layer llayersynthe laccelerando ecar-accelerando p)))
 
 
     
@@ -994,11 +1521,11 @@
 ;;      si les durées sont exprimées en nombre (fractionnaire) de noires
 ;;==============================================================================
 
-(defun note-silence ( chan pgchange dur haut vel sil stac tril ecar laccord lecar lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss) 
-  ;(print (list "note-silence" chan dur sil))
+(defun note-silence ( chan pgchange dur haut vel sil stac tril ecar laccord lecar lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando) 
+  ;(print (list "note-silence  chan dur sil laccord haut " chan dur sil laccord haut))
        (if (> tril 0)
-         (note-trille chan pgchange dur haut ltransp ltextexpres vel stac tril ecar laccord lecar lapog arpegecar layer ldurgliss lhautgliss)
-         (note-non-trille chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer ldurgliss lhautgliss))
+         (note-trille chan pgchange dur haut ltransp ltextexpres vel stac tril ecar laccord lecar lapog arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)
+         (note-non-trille chan pgchange dur haut ltransp ltextexpres vel stac laccord lecar lapog arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))
        (when (not (= 0 sil)) 
          (silenceliste chan (remove-duplicates laccord) (/ (date?) noi) (- 0 (abs sil)) layer) 
          (p-rel (floor (* noi (abs (eval sil)))))))
@@ -1054,10 +1581,12 @@
            (format t "Liste de motif trop longue ~%") (list dur))
           (t dddur))))
 
+#|
+
 
 
 (defun note-motif (chan pgchange dur haut vel sil stac tril ecar laccord lecar lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss)
-  ;(print (list "NOTE-MOTIF" " sil " sil " dur " dur))
+  (print (list "NOTE-MOTIF" " sil " sil " dur " dur "chan" chan))
   (if (< (eval dur) 0)
     (progn (silenceliste chan (remove-duplicates laccord) (/ (date?) noi) dur layer)
            (p-rel (floor (* noi (abs (eval dur))))))
@@ -1065,6 +1594,7 @@
   (when (not (= 0 sil)) ;; ici le key-paramètre sil n'est pas nul
     (silenceliste chan (remove-duplicates laccord) (/ (date?) noi) (- 0 (abs sil)) layer)   
     (p-rel (floor (* noi (abs (eval sil)))))))
+|#
 
 ;;------------------------------------------------------------- 02 03 05
 ;; Pour la mise en place de :sil hors n-olet dans note-motif
@@ -1114,18 +1644,20 @@
 ;; Le silence n'est introduit qu'en dehors des n-olets
 ;;--------------------------------------------------------------------------------------------
 
-(defun note-motif (chan pgchange dur haut vel sil stac tril ecar laccord lecar lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss)
-  ;(print (list "note-motif" chan dur))
+
+
+(defun note-motif (chan pgchange dur haut vel sil stac tril ecar laccord lecar lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)
+  ;(print (list "note-motif chan dur haut sil laccord laccelerando " chan dur haut sil laccord laccelerando))
 
   (if (listp dur)
     (if (and (and (= 0 *totrythm*) (est-nolet? dur)))
     (setq *durrythm* (dur-rythme dur))))
 
-  (setq *totrythm* (+ *totrythm* (special-evaluate dur)))
+  (setq *totrythm* (+ (special-evaluate dur) *totrythm*)) 
   (if (< (eval dur) 0)
     (progn (silenceliste chan (remove-duplicates laccord) (/ (date?) noi) dur layer)
            (p-rel (floor (* noi (abs (eval dur))))))
-    (note-mot chan pgchange (transfodur dur lmotifhaut) haut vel stac tril ecar laccord lecar lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss))
+    (note-mot chan pgchange (transfodur dur lmotifhaut) haut vel stac tril ecar laccord lecar lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))
   (when (and (not (= 0 sil)) (denpair *totrythm*) (>= *totrythm* *durrythm*)) ;; ici le key-paramètre sil n'est pas nul
     (setq *totrythm* 0)
     (setq *durrythm* 0)
@@ -1134,15 +1666,15 @@
            
 
 
-(defun note-mot ( chan pgchange ldur haut vel stac tril ecar laccord lecar lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss)
-  (note-silence chan pgchange (car ldur) (+ haut (car lmotifhaut)) vel 0 stac tril ecar laccord lecar lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss)
-  (note-mo chan pgchange (cdr ldur) haut vel stac tril ecar laccord lecar (cdr lmotifhaut) ltransp ltextexpres arpegecar layer ldurgliss lhautgliss))
+(defun note-mot ( chan pgchange ldur haut vel stac tril ecar laccord lecar lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando) 
+  (note-silence chan pgchange (car ldur) (+ haut (car lmotifhaut)) vel 0 stac tril ecar laccord lecar lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)
+  (note-mo chan pgchange (cdr ldur) haut vel stac tril ecar laccord lecar (cdr lmotifhaut) ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))
 
-(defun note-mo ( chan pgchange ldur haut vel stac tril ecar laccord lecar lmotifhaut ltransp ltextexpres arpegecar layer ldurgliss lhautgliss)
-  ;(print (list "note-mo" ldur))
+(defun note-mo ( chan pgchange ldur haut vel stac tril ecar laccord lecar lmotifhaut ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)
+  ;(print (list "note-mo ldur haut " ldur haut))
   (when (and ldur lmotifhaut) 
-    (note-silence chan pgchange (car ldur) (+ haut (car lmotifhaut)) vel 0 stac tril ecar laccord lecar nil ltransp ltextexpres arpegecar layer ldurgliss lhautgliss)
-    (note-mo  chan pgchange (cdr ldur) haut vel stac tril ecar laccord lecar (cdr lmotifhaut) ltransp ltextexpres arpegecar layer ldurgliss lhautgliss)))
+    (note-silence chan pgchange (car ldur) (+ haut (car lmotifhaut)) vel 0 stac tril ecar laccord lecar nil ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)
+    (note-mo  chan pgchange (cdr ldur) haut vel stac tril ecar laccord lecar (cdr lmotifhaut) ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)))
 
 
 
@@ -1160,15 +1692,15 @@
 
 
 
-;--------- traitement ENIGMA des canaux non actifs dans l'accord -------------
+;--------- traitement ENIGMA des canaux non actifs (au sens de :lmaxaccord) dans l'accord -------------
 
-(defun fait-faux-accord ( pgchange dat dur sil lfauxaccord arpegecar layer ldurgliss lhautgliss) 
-  ;(print (list "fait-faux-accord" sil lfauxaccord))
+(defun fait-faux-accord ( pgchange dat dur sil lfauxaccord arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando) 
+ ;(print (list "fait-faux-accord" sil lfauxaccord))
   (when lfauxaccord 
     (p-abs dat)
     (if (>= (car lfauxaccord) 0)
-      (note-motif 0 pgchange (changder dur) 10 0 sil 1 0 1 lfauxaccord '(0) '(0) nil nil nil arpegecar layer ldurgliss lhautgliss)) 
-    (fait-faux-accord pgchange dat dur sil (cdr lfauxaccord) arpegecar layer ldurgliss lhautgliss)))
+      (note-motif 0 pgchange (changder dur) 10 0 sil 1 0 1 lfauxaccord '(0) '(0) nil nil nil arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)) 
+    (fait-faux-accord pgchange dat dur sil (cdr lfauxaccord) arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)))
 
 
 ;--------- retourne les n premiers éléments de la liste l -------------
@@ -1196,14 +1728,15 @@
       nil))
 
         
-(defun fait-accord ( dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut lapog ltransp ltextexpres larpege arpegecar layer ldurgliss lhautgliss)
-  ;(print (list "FAIT-ACCORD" chan ltextexpres laccord lecar))
+(defun fait-accord ( dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut lapog ltransp ltextexpres larpege arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)
+  ;(print (list "FAIT-ACCORD chan dur ltextexpres laccord lecar= " chan dur ltextexpres laccord lecar))
   (cond ((and (not (equal laccord '(0))) larpege) (print "ERREUR DANS FAIT-ACCORD: Il n'est pas possible d'arpeger des accords") (abort))
-        (larpege (note-motif chan pgchange dur haut vel sil stac tril ecar (fait-liste0 larpege) larpege lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss))
+        (larpege (note-motif chan pgchange dur haut vel sil stac tril ecar (fait-liste0 larpege) larpege lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))
         (t (setq lecar (compare-liste laccord lecar)) 
            (setq laccord (compare-liste lecar laccord))
-           (note-motif chan pgchange dur haut vel sil stac tril ecar laccord lecar lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss)
-           (fait-faux-accord pgchange dat dur sil (set-difference lmaxaccord (mapcar #'(lambda (x) (+ x chan)) laccord)) arpegecar layer ldurgliss lhautgliss))))
+           ;(print (list "FAIT-ACCORD chan laccord lecar" chan  laccord lecar))
+           (note-motif chan pgchange dur haut vel sil stac tril ecar laccord lecar lmotifhaut lapog ltransp ltextexpres arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando)
+           (fait-faux-accord pgchange dat dur sil (set-difference lmaxaccord (mapcar #'(lambda (x) (+ x chan)) laccord)) arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))))
 
 ;;-------------------------------------------------------------------------------
 ;;                Traitement des glissandi
@@ -1252,8 +1785,10 @@
 ;; lhaut: liste d'écarts de hauteur en 1/2 tons par rapport à la hauteur de référence
 ;;---------------------------------------
 
-(defun glisse (chan port ldur lhaut &optional (prem 0))
-  ;(format t "GLISSE ldur~S ~%" ldur)
+(defun glisse (chan port ldur lhaut &optional (prem 0))  
+  (if (and lhaut (> (abs (car lhaut)) *bend*))
+      (format t "Attention: dans glisse, (abs écart) > *bend*: écart~S *bend*~S ~%" (car lhaut) *bend*)) 
+  
   (when (and ldur lhaut)
     (ramp-pitch chan port (car ldur) (- (car lhaut) prem) prem)  
     (glisse chan port (cdr ldur) (cdr lhaut) (car lhaut))))
@@ -1377,9 +1912,6 @@
   (if l (or (= a (car l)) (in-list? a (cdr l))) nil))
 
 
-(defun vm0 (a chan laccord) ;(print (list "vm0" a chan laccord))
-  (if (not (in-list? a (mapcar #'(lambda (x) (+ x chan)) laccord))) 
-    (format t "DANS FONCTION VM0: ALERTE: Pas de canal ~S pour appliquer PGCHANGE ~%" a)))
 
 (defun vm0 (a chan laccord) ;(print (list "vm0" a chan laccord)) ; modifier cette fonction de manière à tenir compte du :key proba de gnotes
   (if (if laccord (not (in-list? a (mapcar #'(lambda (x) (+ x chan)) laccord))) (not (= a chan))) 
@@ -1401,47 +1933,80 @@
 ;; Les controleurs sont écrits par note ou accord, indépendaments des trilles et motifs
 ;;-------------------------------------------------------------------------------
 
-(defun make-control (chan dur laccord lcontrol) ;(print (list "MAKE-CONTROL" chan laccord dur (date?)))
+(defun make-control (chan dur laccord lcontrol) ;(print "make-control")
   (let ((d (eval dur)))
     (if (> d 0)
-      (let ((lcanaux (mapcar #'(lambda (x) (+ x chan)) (remove-duplicates laccord))))
-        (make-contro lcanaux d lcontrol)))))
+        (let ((lcanaux (mapcar #'(lambda (x) (+ x chan)) (remove-duplicates laccord))))
+          (make-contro lcanaux d lcontrol)))))
 
-(defun make-contro (lcanaux d lcontrol)
+(defun make-contro (lcanaux d lcontrol) ;(print "make-contro")
   (if lcanaux 
     (progn
       (make-contr (car lcanaux) d lcontrol)
       (make-contro (cdr lcanaux) d lcontrol))))
 
 
-(defun make-contr (spechan d lcontrol) 
-  (let* ((stime (date?))
+
+(defun make-contr (spechan d lcontrol) ;; lcontrol = ((G 7) (FLOO (I (G 0) (G 127))) (G 1))
+    (let* ((stime (date?))
          (etime (floor (+ stime (* noi d))))
          (ctime stime)
-         (reverse nil)) 
-    (make-cont (nchan spechan) (nport spechan) lcontrol stime ctime etime reverse)))
+         (reverse nil)
+         (steptime (floor (/ (- etime stime) 100))))   ; pour ne pas avoir plus de 100 récursions (sinon overflow)
+    (make-cont (nchan spechan) (nport spechan) lcontrol stime ctime etime reverse steptime)))
 
 
-(defun make-cont (chan port lcontrol stime ctime etime reverse &key (vprecedent -1000))
-  (let ((num §(eval(first lcontrol)))
-        (v §(eval(second lcontrol)))
-        (sv §(eval(third lcontrol)))) ; seuil=ecart minimum entre deux valeurs successives du controleur
-    (if (<= ctime etime)
-      (progn
-        (midi-move *out* :date ctime)
-        (if (>= (abs (- v vprecedent)) sv)  
-          (progn
-            (midi-write-ev *out* (ctrl-change :ctrl num :value v :chan chan :port port))
-            (make-cont chan port lcontrol stime (+ ctime 50) etime reverse :vprecedent v))
-          (make-cont chan port lcontrol stime (+ ctime 50) etime reverse :vprecedent vprecedent)))
-      (p-abs stime))))
 #|
 
 |#
 
+(defun make-cont (chan port lcontrol stime ctime etime reverse steptime &optional (vprecedent -1000)) ;(print "make-cont") 
+  
+
+  (let ((num §(eval(first lcontrol)))
+        (v §(eval(second lcontrol)))
+        (sv §(eval(third lcontrol)))) 
+    (if (<= ctime etime)
+        (progn
+          (midi-move *out* :date ctime)
+          (if (>= (abs (- v vprecedent)) sv)
+              (progn
+                (midi-write-ev *out* (ctrl-change :ctrl num :value v :chan chan :port port))
+                (make-cont chan port lcontrol stime (+ ctime steptime) etime reverse steptime v))
+            (make-cont chan port lcontrol stime (+ ctime steptime) etime reverse steptime vprecedent)))
+      (progn
+        (p-abs etime)
+        (midi-write-ev *out* (ctrl-change :ctrl num :value 110 :chan chan :port port)) ;on écrit un volume "normal" à la fin de la note
+        (p-abs stime)))))
+
+
+;;-------------------------------------------------------------------------------
+;;         MAKE-CONTROLE-CHGE
+;;
+;; Ajout dU 11 Septembre 2011
+;; Génére le controleur spécifié par le paramètre :lcontrole-chge de gnotes
+;; Les controleurs sont écrits par note ou accord, indépendaments des trilles et motifs
+;; Les silences de rythme comptent comme des notes
+;;-------------------------------------------------------------------------------
+
+
+(defun make-controle-chge (chan laccord val numcontrol) 
+      (let ((lcanaux (mapcar #'(lambda (x) (+ x chan)) (remove-duplicates laccord)))) 
+        (make-controle-ch lcanaux val numcontrol)))
+
+
+(defun make-controle-ch (lcanaux val numcontrol) 
+  (if lcanaux
+      (let ((chan (nchan (car lcanaux)))
+         (port (nport (car lcanaux))))
+         (midi-write-ev *out* (ctrl-change :ctrl numcontrol :value val :chan chan :port port))
+        (make-controle-ch (cdr lcanaux) val numcontrol))))
+       
 
 
 
+#|
+|#
 
 
 ;;-------------------------------------------------------------------------------
@@ -1454,21 +2019,29 @@
 ;; (+ 1 -2) --> (1) et (-2)
 ;;-------------------------------------------------------------------------------
 
-(defun accord ( dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer lcontrol)
-  ;(print (list "accord" dat dur haut))
+
+(defun accord ( dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer lcontrol llayersynthe laccelerando ecar-accelerando)
+
+  (if laccelerando
+      (let ((cresc (third laccelerando)))
+        (cond
+         ((> cresc 0) (make-control chan dur laccord '(°7 (floo(i °45 °110)) °2))) ; si un crescendo/decrescendo est notifié on envoie une rampe de volume
+         ((< cresc 0) (make-control chan dur laccord '(°7 (floo(i °110 °45)) °2)))
+         (t t))))
+
   (if lcontrol (make-control chan dur laccord lcontrol))
   ;(print (list "ACCORD" chan dur laccord lecar (date?)))
   (if pgchange (setq pgchange (verif-pgchange pgchange chan laccord)))  ;; vérifie la cohérence de pgchange et le modifie le cas échéant
   (if (and (listp dur) (equal '+ (first dur)) (or (sign (eval (second dur))) (sign (eval(third dur)))))
-    (progn 
-      (accord dat chan pgchange (second dur) haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer lcontrol)
-      (accord dat chan pgchange (third dur) haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer lcontrol))
-    (accord0 dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer)))
+      (progn 
+        (accord dat chan pgchange (second dur) haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer lcontrol llayersynthe laccelerando ecar-accelerando)
+        (accord dat chan pgchange (third dur) haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer lcontrol llayersynthe laccelerando ecar-accelerando))
+    (accord0 dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer llayersynthe laccelerando ecar-accelerando)))
 
-(defun accord0 ( dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer)
-  ;(print (list "accord0" chan laccord lecar))
-  (if lhautgliss (glissando dat chan dur (chngaccord laccord) ldurgliss lhautgliss stac)) 
-  (fait-accord dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut lapog ltransp ltextexpres larpege arpegecar layer ldurgliss lhautgliss))
+(defun accord0 ( dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer llayersynthe laccelerando ecar-accelerando)
+  ;(print (list "accord0" chan dur laccord lecar lhautgliss))
+  (if (and lhautgliss (not (liste0 lhautgliss))) (glissando dat chan dur (chngaccord laccord) ldurgliss lhautgliss stac)) 
+  (fait-accord dat chan pgchange dur haut vel sil stac tril ecar laccord lecar lmaxaccord lmotifhaut lapog ltransp ltextexpres larpege arpegecar layer ldurgliss lhautgliss llayersynthe laccelerando ecar-accelerando))
 
 
 

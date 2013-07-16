@@ -205,6 +205,7 @@
 
 
 ;; --------------------------------------------------- concatene n fois rythm (qui est évalué une seule fois)
+
 (defun nconcat-spe (n rytm)
   #'(lambda (stime ctime etime reverse) 
       (let (l (r §rytm)) 
@@ -212,6 +213,41 @@
         l)))
 
 ;; (l 3 (nconcat-spe °3 (h °((1) (1/2) (1/4))))) --> ((1/2 1/2 1/2) (1/2 1/2 1/2) (1 1 1))
+
+
+; ---------------------------------------------------- concatene n fois rythm et complete à l'entier supérieur
+
+(defun nconcat-spe2 (n r)
+  #'(lambda (stime ctime etime reverse) 
+      (let (l (r §r)) 
+        (dotimes  (i §n) (setq l (append l r)))
+        (let ((d (dur-midi (prefixplus (code-rythme l)))))
+        (if (= d (truncate d))
+            l
+             (append l (list (- (+ 1 (truncate d)) d))))))))
+
+; (l 1 (nconcat-spe2 °9 °(1/4))) -----------> ((1/4 1/4 1/4 1/4 1/4 1/4 1/4 1/4 1/4 3/4))
+
+
+
+; ---------------------------------------------------- décompose un rythme r1 en éléments r2 
+
+(defun nconcat-spe3 (r1 r2)
+  #'(lambda (stime ctime etime reverse) 
+      (let* ((rrr2 §r2)
+             (rr1 (dur-midi (prefixplus (code-rythme §r1))))
+             (rr2 (dur-midi (prefixplus (code-rythme rrr2))))
+             (q (truncate (/ rr1 rr2)))
+             (rest (- rr1 (* q rr2)))
+             (l))
+     
+        (dotimes  (i q) (setq l (append l rrr2)))
+        (if (> rest 0)
+            (append l (list rest)) l))))
+
+;(l 1 (nconcat-spe3 °(2) °(1/4))) ------> ((1/4 1/4 1/4 1/4 1/4 1/4 1/4 1/4)) 
+;(l 1 (nconcat-spe3 °(2 + 1/8) °(1/4))) ------> ((1/4 1/4 1/4 1/4 1/4 1/4 1/4 1/4 1/8)) 
+
 
 
 ;; --------------------------------------------------- concatene une liste de listes (ou de rythmes)
@@ -737,9 +773,28 @@
                           (* (FDUR 2 3 D-N) (FDUR 2 3 D-C) 1/2) (* (FDUR 2 3 D-N) (FDUR 2 3 D-C) -1))))
 
 (compact-rythme '(1 2 3 4)) --> 10
+(compact-rythme '(1 + 4/5dc (1/4 -1))) --> nil!!!!!!!!!
+
+
+
 |#
 
+; ------------------ Remplace un rythme par un rythme de sa durée  -----------------------
+
+(defun compact (l)
+    #'(lambda (stime ctime etime reverse)
+        (list(dur-midi (prefixplus (code-rythme §l))))))
+
+;;(dur-midi (prefixplus (code-rythme '(1 + 4/5dc (1/4 -1)))))
+
+;;(l 1 (compact °(1 + 4/5dc (1/4 -1)))) --> ((2))
+
+
+
+; -------------------------------------------------------------------
 ; ------------------ Remplace les n-olets "complet" d'un rythme par la durée équivalente -----------------------
+; -------------------------------------------------------------------
+
 (defun ote-nolet-tout-silence (l &optional (res nil))
   (if l
     (let ((x (car l)))
@@ -779,9 +834,10 @@
 ; (ajout '+ '(1 2 3 4 5)) --> (1 + 2 + 3 + 4 + 5)
 
 
+; -------------------------------------------------------------------
 ; ----- Rend négatives (silence) les i premières durées positives d'un rythme ------
 ; ------------------ et compact toutes les durées restantes en une seule -----------
-
+; -------------------------------------------------------------------
 
 
 (defun i-rythme2 (l i)
@@ -812,17 +868,52 @@
 ;(i-rythme2 '(1 2 -3 4 -5 6 7) 3)
 ;(i-rythme2 '(1 + 2/3c (2/3dc (1/2 1/4) -1/2 1/2) + 2/3n (2 1)) 10)
 ;(i-rythme2 '(1 + 2/3c (2/3dc (1/2 1/4) -1/2 1/2) + 2/3n (2 1)) 0)
+;(i-rythme2 '(1 + 2/3c (2/3dc (1/2 1/4) -1/2 1/2) + 2/3n (2 1)) 4)
+
+
+; -------------------------------------------------------------------
+; CONTRAIRE: rend 1 si 0, 0 pour toute autre valeur
+; -------------------------------------------------------------------
+(defun contraire (l)
+    #'(lambda (stime ctime etime reverse)
+        (if (= §l 0)  1  0)))
+
+(l 3 (contraire (s °(0 0 1 2 3))))
+
+
+; -------------------------------------------------------------------
+; MODIFRYTHME: retourne: si n=0 le rythme r compacté, si n=-1 le rythme r compacté en silence, sinon r
+; -------------------------------------------------------------------
+
+(defun modifrytm (r n)
+                  (cond ((= 0 n) (list(dur-midi (prefixplus (code-rythme r)))))
+                        ((= -1 n) (list (- 0 (dur-midi (prefixplus (code-rythme r))))))
+                        (t r)))
+
+(defun modifrythme (r n)
+    #'(lambda (stime ctime etime reverse)
+        (modifrytm §r §n)))
 
 
 
+
+;(l 1 (modifrythme °(2 2 + 2/3n (1 1 1) -10) °-1)) --------> (-16)
+;(l 1 (modifrythme °(2 2 + 2/3n (1 1 1) -10) °0)) ---------> (16)
+;(l 1 (modifrythme °(2 2 + 2/3n (1 1 1) -10) °6)) ---------> (2 2 + 2/3n (1 1 1) -10)
+
+
+; -------------------------------------------------------------------
 ; -- Rend négatives (silence) les i premières durées positives d'un rythme ---
+; -------------------------------------------------------------------
 
 (defun gi-rythme (l i)
   #'(lambda (stime ctime etime reverse) 
       (i-rythme §l §i)))
 
+; -------------------------------------------------------------------
 ; -- Rend négatives (silence) les i premières durées positives d'un rythme l --
 ; ---------- et compact toutes les durées restantes en une seule ---------------
+; -------------------------------------------------------------------
 
 (defun gi-rythme2 (l i)
   #'(lambda (stime ctime etime reverse) 
