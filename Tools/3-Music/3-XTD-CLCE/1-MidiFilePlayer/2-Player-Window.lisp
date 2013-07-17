@@ -67,13 +67,12 @@
 (defun open-msh-player (name)
   (player-framework)
   (let ((ref (Open-Player name)))
-    (midi-connect ref 0 T)
+    (midi-connect ref 0 T)   ;; connected to output
+    (midi-connect 0 ref nil) ;; disconnected from output
     (SetAllTrackPlayer ref (midi-new-seq) 500)
-    ;;(init-player ref name)
     (setq *player-window* (make-instance 'player-interface))
     (capi:display *player-window*)
-    ref
-    ))
+    ref))
   
 (defun close-msh-player (player)
   (ClosePlayer player))
