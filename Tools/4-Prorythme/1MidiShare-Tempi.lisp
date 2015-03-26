@@ -222,7 +222,7 @@
 (midistop)
 (midiclear)
 (midiprint)
-(midiprint :len 2)
+(midiprint :len 20)
 (midiprint :date 10000)
 (player)
 (midisave :ask)

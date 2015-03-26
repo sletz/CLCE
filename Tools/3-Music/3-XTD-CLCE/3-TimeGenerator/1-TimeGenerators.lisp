@@ -167,6 +167,11 @@
       (if (> vv d) (- max (- d2 vv)) (+ min vv)))))
 
 
+
+;; (tore 6 0 5) --> 1
+
+
+
 ;;________________________________________________________
 ;;                    GENERATEURS TEMPORELS DE BASE
 ;;________________________________________________________
@@ -250,6 +255,19 @@
 
 ;; ------------------------------- seq : sequence
 
+;;(defun seq (&rest lg)
+;;  (let ((nn (length lg)))
+;;    #'(lambda (stime ctime etime reverse)
+;;        (let* ((dt (/ (- etime stime) nn))
+;;               (p (if reverse 
+;;                    (- nn 1 (floor (- ctime stime) dt)) 
+;;                    (floor (- ctime stime) dt)))
+;;               (ct (+ stime (mod (- ctime stime) dt)))) 
+;;        (funcall (nth p lg) stime ct (+ stime dt) reverse))) ))
+
+
+;; modif du 21 sept 2012
+
 (defun seq (&rest lg)
   (let ((nn (length lg)))
     #'(lambda (stime ctime etime reverse)
@@ -257,8 +275,10 @@
                (p (if reverse 
                     (- nn 1 (floor (- ctime stime) dt)) 
                     (floor (- ctime stime) dt)))
-               (ct (+ stime (mod (- ctime stime) dt))))
-        (funcall (nth p lg) stime ct (+ stime dt) reverse))) ))
+               (ct (+ stime (mod (- ctime stime) dt)))) 
+       (if (nth p lg) (funcall (nth p lg) stime ct (+ stime dt) reverse)))) ))
+
+
 
 
 ;;________________________________________________________
@@ -387,19 +407,19 @@
     (car lg)
     (alt (apply #'lalt (cdr lg)) (car lg))))
 
-;; ------------------------------- RDG : reduit par la gauche
+;; ------------------------------- RDG : reduit par la gauche:   (l 1 (rdg °- °(10 2 3 4 5))) --> (-4)
 
 (defun rdg (g1 g2)
   #'(lambda (stime ctime etime reverse)
         (reduce §g1 §g2)))
 
-;; ------------------------------- RDD : reduit par la droite
+;; ------------------------------- RDD : reduit par la droite:   (l 1 (rdd °- °(10 2 3 4 5))) --> (12)
 
 (defun rdd (g1 g2)
   #'(lambda (stime ctime etime reverse)
         (reduce §g1 §g2 :from-end t)))
 
-;; ------------------------------- RDV : reduit verticalement
+;; ------------------------------- RDV : reduit verticalement    (l 5 (rdv °max (h °(1 2 3 4 5 6 7 8 9 10 11 12 13 14)))) --> (1 1 6 12 12)
 
 (defun rdv (g1 g2)
   (let ((start t)
@@ -544,7 +564,7 @@
         (decf cc)
         vv)))
 
-;; ------------------------------- SHIFT : decale les valeurs d'un generateur (max 255)
+;; ------------------------------- SHIFT : decale les valeurs d'un generateur (max 255):  (l 2 (shift °2 (s °(1 2 3 4)))) --> (3 4)
 
 (defun shift (g1 g2)
   (let ((tab (make-array 256))
@@ -560,7 +580,7 @@
           (setq head (logand 255 (+ head 1)))
           res))))
 
-;; ------------------------------- FREQ : change la frequence d'1 gen.
+;; ------------------------------- FREQ : change la frequence d'1 gen.:  (l 2 (freq °2 (s °(1 2 3 4)))) -->  (2 4)
 
 (defun freq (g1 g2)
   (let ( (cc 0)  (vv) (startp t))
@@ -602,6 +622,15 @@
 
 (defun  gnot (g)
   (appl °not g))
+
+(defun  ggnot (g)
+  #'(lambda (stime ctime etime reverse)
+      (not §g)))
+
+;; ------------------------------- GMOD : modulo
+(defun  gmod (g1 g2)
+  #'(lambda (stime ctime etime reverse)
+      (mod §g1 §g2)))
 
 ;; ------------------------------- GATE : vrai pendant n1 faux pendant n2
 

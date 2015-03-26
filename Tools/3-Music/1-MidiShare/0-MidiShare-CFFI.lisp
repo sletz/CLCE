@@ -1034,7 +1034,7 @@
 
 (defvar *midishare-recv* nil)
 
-(cffi:defcallback midishare-callback :void ((refnum :short))
+(cffi:defcallback (midishare-callback :convention :stdcall) :void ((refnum :short))
   (restart-case
       (handler-bind ((error
                       #'(lambda (c)

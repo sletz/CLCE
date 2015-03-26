@@ -54,25 +54,27 @@
       res))
 
 (defun c-tempo (tempo)
-  (if (= tempo 0)
-      60
-      (round (/ (* 60000 1000) tempo))))
+ (if (= tempo 0)
+     60
+     (round (/ (* 60000 1000) tempo))))
+
 
 ;;=======================================================
 ;; open a MidiFile PLAYER with its an associated dialog
 ;;=======================================================
 
-(export '(open-mf-player open-msh-player get-mf-player-loop-content set-mf-player-seq msh-seq-duration msh-seq-all-duration))
+(export '(open-mf-player open-msh-player get-mf-player-loop-content set-mf-player-seq))
 
 (defun open-msh-player (name)
   (player-framework)
   (let ((ref (Open-Player name)))
-    (midi-connect ref 0 T)   ;; connected to output
-    (midi-connect 0 ref nil) ;; disconnected from output
+    (midi-connect ref 0 T)
     (SetAllTrackPlayer ref (midi-new-seq) 500)
+    ;;(init-player ref name)
     (setq *player-window* (make-instance 'player-interface))
     (capi:display *player-window*)
-    ref))
+    ref
+    ))
   
 (defun close-msh-player (player)
   (ClosePlayer player))
@@ -85,18 +87,6 @@
  
 (defun mf-player-start-seq (player)
  (StartPlayer player))
-
-(defun msh-seq-duration ()
-  (let (date length)
-    (GetStatePlayer *session-mf-player* *player-state*)
-    (setq date (s-date *player-state*))
-    (GetEndScorePlayer *session-mf-player* *player-state*)
-    (setq length (s-date *player-state*))
-    (max 0 (- length date))))
-
-(defun msh-seq-all-duration ()
-  (GetEndScorePlayer *session-mf-player* *player-state*)
-  (s-date *player-state*))
   
 ;;=======================================================
 ;; Dialog
@@ -166,31 +156,25 @@
    :layout 'main-layout))
 
 (defun update-pos (self)
- (capi:apply-in-pane-process self 
-                             #'(lambda (self)
-                                 (GetStatePlayer *session-mf-player* *player-state*)
-                                 (when (= kIdle (s-state *player-state*))
-                                   (stop-timer))
-                                 (let ((curbar (s-bar *player-state*) )
-                                       (curbeat (s-beat *player-state*))
-                                       (curdivision (s-unit *player-state*)))
-                                   (setf (capi:text-input-pane-text (bar-pane self)) (write-to-string curbar)
-                                         (capi:text-input-pane-text (beat-pane self)) (write-to-string curbeat)
-                                         (capi:text-input-pane-text (div-pane self)) (write-to-string curdivision)
-                                         (capi:text-input-pane-text (tempo-pane self)) (write-to-string (c-tempo (s-tempo *player-state*)))))) 
-                             self))
+   (GetStatePlayer *session-mf-player* *player-state*)
+   (when (= kIdle (s-state *player-state*))
+     (stop-timer))
+   (let ((curbar (s-bar *player-state*) )
+         (curbeat (s-beat *player-state*))
+         (curdivision (s-unit *player-state*)))
+     (setf (capi:text-input-pane-text (bar-pane self)) (write-to-string curbar)
+            (capi:text-input-pane-text (beat-pane self)) (write-to-string curbeat)
+            (capi:text-input-pane-text (div-pane self)) (write-to-string curdivision)
+            (capi:text-input-pane-text (tempo-pane self)) (write-to-string (c-tempo (s-tempo *player-state*))))))
 
 (defun read-pos (self)
-  (capi:apply-in-pane-process self 
-                              #'(lambda (self)
-                                  (GetEndScorePlayer *session-mf-player* *player-state*)
-                                  (let ((curbar (read-from-string (capi:text-input-pane-text (bar-pane self))))
-                                        (curbeat (read-from-string (capi:text-input-pane-text (beat-pane self)))))
-                                    (p-bar *player-pos* (min curbar (s-bar *player-state*)))
-                                    (p-beat *player-pos* curbeat)
-                                    (p-unit *player-pos* 1)
-                                    (SetPosBBUPlayer *session-mf-player*  *player-pos*)))
-                               self))
+  (GetEndScorePlayer *session-mf-player* *player-state*)
+  (let ((curbar (read-from-string (capi:text-input-pane-text (bar-pane self))))
+        (curbeat (read-from-string (capi:text-input-pane-text (beat-pane self)))))
+     (p-bar *player-pos* (min curbar (s-bar *player-state*)))
+     (p-beat *player-pos* curbeat)
+     (p-unit *player-pos* 1)
+     (SetPosBBUPlayer *session-mf-player*  *player-pos*)))
 
 (defun start-timer ()
   (stop-timer)
