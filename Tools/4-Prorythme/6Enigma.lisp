@@ -1,59 +1,64 @@
 ;;============================================================================================================================
 ;;       CALCUL DU FICHIER ENIGMA A PARTIR DE L'ENSEMBLE DES *LISTE.n*
 ;;                  PIERRE ALAIN JAFFRENNOU - SEPTEMBRE 1996
-;;       Méthode:
-;;        1- Réarangement des listes *liste.n*
+;;       Mthode:
+;;        1- Rarangement des listes *liste.n*
 ;;        2- Production des sous fichiers ENIGMA (via DECODE) canal par canal, layer par layer
-;;        3- Construction du fichier final ENIGMA par concaténation des fichiers précédents
+;;        3- Construction du fichier final ENIGMA par concatnation des fichiers prcdents
 ;;           avec les fichiers contenus dans le dossier enigma includes du dossier MCL5.0
 ;;
 ;;============================================================================================================================
 ;;
-;; Modifié le 16 nov 1996: prepa-liste; decode; finale
-;; Modifié en octobre 1997 pour introduire la possibilité de coder les accords
+;; Modifi le 16 nov 1996: prepa-liste; decode; finale
+;; Modifi en octobre 1997 pour introduire la possibilit de coder les accords
 ;; Suppression *dur-mesure* le 18 12 97
 
-;; (novembre 97) Création d'un cinquième champs Enigma composé d'une liste (modif du 27 08 01 pour afficher Gliss dans FINAL):
-;; (0): première et dernière grace note (grace note unique)     
-;; (1): première grace note
+;; (novembre 97) Cration d'un cinquime champs Enigma compos d'une liste (modif du 27 08 01 pour afficher Gliss dans FINAL):
+;; (0): premire et dernire grace note (grace note unique)     
+;; (1): premire grace note
 ;; (2): seconde grace note
 ;; etc .... 
-;; (99): dernière grace note
-;; (253 puis arguments: liste des ecars liste des durées): marque de glissando  ; ajout du 27 04 01
+;; (99): dernire grace note
+;; (253 puis arguments: liste des ecars liste des dures): marque de glissando  ; ajout du 27 04 01
 ;; (254): marque de staccato
 ;; (255): note normale (non grace note)
 
 ;; rajout le 18 12 2000:
-;; variable *long-mes* qui règle la longueur de toute les mesures dans FINALE
+;; variable *long-mes* qui rgle la longueur de toute les mesures dans FINALE
 
 ;; Modifications de Mai 2001 (Finale2001d):
-;; le dossier enigma includes doit se trouver au même niveau que MCL:
+;; le dossier enigma includes doit se trouver au mme niveau que MCL:
 ;; (defparameter *enigma-dir* "ccl:enigma includes;")
 
 ;; Modifications de 27 08 2001 (Finale2001d):
 ;; Transformation du 5eme champ des listes en une liste pour introduire la notation des glissandi
 
 ;; Pour raison de simplification: Modification en Mai 2001 des fonctions FINALE, DECODE et PREPARE-LISTE (NOM)
-;; Pour calculer le fichier ENIGMA il suffit désormais de faire: (finale "essai")
-;; Pour tester le fichier à décoder en FINALE, il suffit de faire (prepa-liste)
-;; La variable intermédiaire t1 qui stockait (prepa-liste), n'est plus utilisée
+;; Pour calculer le fichier ENIGMA il suffit dsormais de faire: (finale "essai")
+;; Pour tester le fichier  dcoder en FINALE, il suffit de faire (prepa-liste)
+;; La variable intermdiaire t1 qui stockait (prepa-liste), n'est plus utilise
 ;; re-nouveau prepa-liste
 ;; Modification de write-enigma-file
 
 ;; Modifications de 12 11 2001 (Finale2001d):
-;; Introduction d'un paramètre optionnel :layer
+;; Introduction d'un paramtre optionnel :layer
 
 ;; Modification de Mars 2005
 ;; Refonte importante pour prendre en compte finale2004
-;; Création de fonctions avec le suffixe 01 (pour Finale 2001) ou 04 (Finale 2004)
-;; Création des dossiers D2001 et D2004 dans le dossier ENIGMA INCLUDES
+;; Cration de fonctions avec le suffixe 01 (pour Finale 2001) ou 04 (Finale 2004)
+;; Cration des dossiers D2001 et D2004 dans le dossier ENIGMA INCLUDES
+
+;; Modification de Avril 2012
+;; ajout du parametre optionnel :layersynthe
+;; qui permet de piloter les layers de l'chantilloneur machFive
+;; et d'crire une expression dans la partition
 ;;==============================================================================
 
 
 
 
 ;;==============================================================================
-;;            DÉFINITION ET INITIALISATION DES VARIABLES
+;;            DFINITION ET INITIALISATION DES VARIABLES
 ;;==============================================================================
 
 
@@ -69,20 +74,20 @@
 (defvar *liste-de-portee-clef* nil)
 (defvar *liste-nuplet* nil)
 (defvar *liste-des-GF* nil)          ;; codage des mesures
-(defvar *liste-des-IM* nil)          ;; codage des signes de staccato
+(defvar *liste-des-IM* nil)          ;; codage des marques d'articulation (signes d'accent, de staccato ...)
 (defvar *liste-des-TL* nil)          ;; pour coder les mesures composites pour FINALE
 (defvar *liste-des-TU* nil)          ;; pour coder les mesures composites pour FINALE
 (defvar *liste-position-portee* nil)
 (defvar *liste-des-veloc* nil)
-(defvar *liste-des-tete* nil)        ;; code la forme des tête de note dans le cas de micro-interval  31 08 01
+(defvar *liste-des-tete* nil)        ;; code la forme des tte de note dans le cas de micro-interval  31 08 01
 (defvar *liste-des-expressions*)     ;; code les expressions (mf, piz ...)
-(defvar *liste-barres-mesures* nil)  ;; liste des time-signature de la pièce
-(defvar *copy-liste-bm* nil)         ;; copie de la liste précédente pour chaque canal (decode-chan)
+(defvar *liste-barres-mesures* nil)  ;; liste des time-signature de la pice
+(defvar *copy-liste-bm* nil)         ;; copie de la liste prcdente pour chaque canal (decode-chan)
 
 
-(defvar *cur-pos* 0)  ;; position courante à l'intérieur de la mesure
+(defvar *cur-pos* 0)  ;; position courante  l'intrieur de la mesure
 (defvar *cur-code* '8)
-(defvar *num-mes-FR* 0) ;; indique par mesure et par layer le num du premier et dernier événement
+(defvar *num-mes-FR* 0) ;; indique par mesure et par layer le num du premier et dernier vnement
 ;;(defvar *dur-mesure* 0)
 (defvar *cur-portee* 0)
 (defvar *cur-n* 0)   ;; indice du tableau eE de finale
@@ -120,7 +125,7 @@
 (defvar *dur-uplet1* 0)
 (defvar *dur-uplet2* 0)
 
-(defvar *codage* nil)   ;; variable locale à code-nuplet
+(defvar *codage* nil)   ;; variable locale  code-nuplet
 
 (defvar *end-mesure* nil)
 
@@ -147,7 +152,7 @@
                       (d-qc nil)))))
     (second v)))
 
-(defvar *pos-cour* -1)               ;; représente (first item) cad la date du groupe rythmique
+(defvar *pos-cour* -1)               ;; reprsente (first item) cad la date du groupe rythmique
 (defvar *mes-non-finie* nil)
 
 
@@ -208,17 +213,17 @@
 
 
 ;;==============================================================================
-;;  OUTILS NÉCESSAIRES POUR LE CALCUL DE LA LISTE DES MESURES À APPLIQUER
+;;  OUTILS NCESSAIRES POUR LE CALCUL DE LA LISTE DES MESURES  APPLIQUER
 ;;  Janvier 20001
 ;;==============================================================================
 
 
 ;; ----------------------------------------------------------------------------------
-;; Rend la liste de rythme commune à 2 listes de rythmes
-;; Fonction utilisée pour trouver la liste des longueur de mesure dans FINALE
+;; Rend la liste de rythme commune  2 listes de rythmes
+;; Fonction utilise pour trouver la liste des longueur de mesure dans FINALE
 ;;
-;; Contrairement à l'habitude un n-olet de durée n est noté -n (triolet de noire: -2)
-;; et un silence de durée n est noté (n)
+;; Contrairement  l'habitude un n-olet de dure n est not -n (triolet de noire: -2)
+;; et un silence de dure n est not (n)
 ;;
 ;; (mixrythm0 '(1 -2 1) '(2 2)) --> (1 -2 1)
 ;; (mixrythm0 '(1 -2 4) '(2 2 (6))) --> (1 -2 4)
@@ -285,7 +290,7 @@
 
 ;; -------------------------------------------
 ;; Complete une liste de rythme l
-;; sur une durée d avec du silence
+;; sur une dure d avec du silence
 ;;
 ;; (completer 10 '(1 -1 -3)) --> (1 -1 -3 (5))
 ;; -------------------------------------------
@@ -302,7 +307,7 @@
         (t (print "ERREUR DANS ABSCAR"))))
 
 ;; -------------------------------------------
-;; Complete la durée d'une liste de rythme l
+;; Complete la dure d'une liste de rythme l
 ;;
 ;; (calcdur '(2 -3 (4)))
 ;; -------------------------------------------
@@ -310,29 +315,29 @@
 (defun calcdur (l) (reduce #'+ (mapcar #'abscar l)))
 
 ;;==============================================================================
-;;             MIXRYTHM
-;; Rend la liste de rythme commune à 2 listes de rythmes après complétude des listes
-;; Fonction utilisée pour trouver la liste des longueur de mesure dans FINALE
+;;             MIXER-RYTHME
+;; Rend la liste de rythme commune  2 listes de rythmes aprs compltude des listes
+;; Fonction utilise pour trouver la liste des longueur de mesure dans FINALE
 ;;
-;; Contrairement à l'habitude un n-olet de durée n est noté -n (triolet de noire: -2)
-;; et un silence de durée n est noté (n)
+;; Contrairement  l'habitude un n-olet de dure n est not -n (triolet de noire: -2)
+;; et un silence de dure n est not (n)
 ;;
-;; (mixrythm '((2) -2) '(1 -2)) --> (1 -3)
-;; (mixrythm '(-2 (2) -2 2 (2) 1 (2) -1 -2 (2) 2) '(3 -2 2 (2) 1 1 (2) -1 -1 1 (1) 1 1))
+;; (mixer-rythme '((2) -2) '(1 -2)) --> (1 -3)
+;; (mixer-rythme '(-2 (2) -2 2 (2) 1 (2) -1 -2 (2) 2) '(3 -2 2 (2) 1 1 (2) -1 -1 1 (1) 1 1))
 ;; --> (-2 1 -3 2 (1) 1 1 (2) -1 -2 (1) 1 2)
 ;;==============================================================================
 
-(defun mixrythm (l1 l2)
+(defun mixer-rythme (l1 l2)
   (let ((m (max (calcdur l1) (calcdur l2))))
     (mixrythm0 (completer m l1) (completer m l2))))
 
 ;;==============================================================================
 ;;             SUPERMIXRYTHM
-;; Comme mixrythm mais étendu à une liste de liste de rythmes
-;; Fonction utilisée pour trouver la liste des longueur de mesure dans FINALE
+;; Comme mixer-rythme mais tendu  une liste de liste de rythmes
+;; Fonction utilise pour trouver la liste des longueur de mesure dans FINALE
 ;;
-;; Contrairement à l'habitude un n-olet de durée n est noté -n (triolet de noire: -2)
-;; et un silence de durée n est noté (n)
+;; Contrairement  l'habitude un n-olet de dure n est not -n (triolet de noire: -2)
+;; et un silence de dure n est not (n)
 ;;
 ;; (supermixrythm '((1 -2 1 3 -2) (2 -2 -2 2) (1 1 1 1 1 1 1))) --> (1 -3 -2 1 -2)
 ;; (supermixrythm '((-2 (2) -2 2 (2) 1 (2) -1 -2 (2) 2) 
@@ -341,15 +346,15 @@
 ;;==============================================================================
 
 (defun supermixrythm (ll)
-  (reduce #'mixrythm ll))
+  (reduce #'mixer-rythme ll))
 
 ;;==============================================================================
 ;;             CHERCHE-MESURE
 ;;
 ;; 9 janvier 2001
 ;; retourne la liste des mesures d'une partition
-;; à partir d'une liste des valeurs de mesure admises
-;; et de la liste cumulée des notes, silences et n-uplets
+;;  partir d'une liste des valeurs de mesure admises
+;; et de la liste cumule des notes, silences et n-uplets
 ;; 
 ;;==============================================================================
 
@@ -359,7 +364,7 @@
         ((null l) nil)
         (t (cherche-mesure lpref l))))
 
-;; ote les valeurs non entière d'une liste:
+;; ote les valeurs non entire d'une liste:
 
 (defun ote-non-entier (lpref)
   (cond ((null lpref) nil)
@@ -369,7 +374,7 @@
 (defun cherche-mesure (lpref l)
   ;(print (list 'cherche-mesure lpref l))
   (let ((lnpref (sort (ote-non-entier lpref) #'<)))
-    (if (finliste (car (last lnpref)) l)     ; ------- si le total des segments de la liste des découpage est <= à la plus gde val entière de la liste des préférences
+    (if (finliste (car (last lnpref)) l)     ; ------- si le total des segments de la liste des dcoupage est <=  la plus gde val entire de la liste des prfrences
       (list (derniere-mesure lnpref (calcdur l)))
       (let ((res (trouve-point lpref lpref l)))
         (if res res
@@ -393,8 +398,8 @@
 ;;==============================================================================
 ;;             DERNIERE-MESURE
 ;; traitement de la derniere mesure:
-;; retourne la plus petite valeur entière de la liste des préférences
-;; > au total de la liste des découpage restant à traiter 
+;; retourne la plus petite valeur entire de la liste des prfrences
+;; > au total de la liste des dcoupage restant  traiter 
 ;; (derniere-mesure '(3 4 5) 9/2) --> 5
 ;; (derniere-mesure '(3 4 5) 7/2) --> 4
 ;;==============================================================================
@@ -408,7 +413,7 @@
 ;; -----------------------------------------------
 ;; cherche si une borne de la liste l coincide avec
 ;; une valeur de ln = '(4 3 2 1 5 1/2 3/2 5/2 7/2 9/2) 
-;; liste modifiée le 28 11 01 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2)
+;; liste modifie le 28 11 01 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2)
 ;; -----------------------------------------------
 
 (defun trouve-point (ln lnbis l)
@@ -426,7 +431,7 @@
             (t nil))))
 
 ;; -----------------------------------------------
-;; Il faut couper: priorité aux coupes de silence
+;; Il faut couper: priorit aux coupes de silence
 ;; -----------------------------------------------
 
 (defun coupe (ln l)
@@ -439,7 +444,7 @@
                   (grande-mesure ln (maxliste(ote-non-entier ln)) l)))))))
 
 ;; -----------------------------------------------
-;; on cherche à couper les silences
+;; on cherche  couper les silences
 ;; -----------------------------------------------
 
 (defun coupe-silence (ln l &optional (d 0))
@@ -458,7 +463,7 @@
             (t (coupe-silence1 l (cdr ln) lnbis d1 d2)))))
 
 ;; -----------------------------------------------
-;; on cherche à couper les notes
+;; on cherche  couper les notes
 ;; -----------------------------------------------
 
 (defun maxliste (l)
@@ -482,7 +487,7 @@
             (t (coupe-note1 l (cdr ln) lnbis d1 d2)))))
 
 ;; -----------------------------------------------
-;; toutes les tentatives ont échouées
+;; toutes les tentatives ont choues
 ;; on admet des mesures > (maxliste '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2))
 ;; -----------------------------------------------
 
@@ -518,9 +523,9 @@
 
 ;; (trie12'((1 2 3) (20 30 40) (1 5 3) (5 10 8) (5 6 8)))
 
-(defun trie (l)
+(defun trie (l) ;(format t "trie l=~S ~% ~%" l )
   (sort l #'(lambda(a b) (if (= (car a) (car b))
-                           (< (car(fifth a)) (car(fifth b)))       ; modifié le 28 08 01
+                           (< (car(fifth a)) (car(fifth b)))       ; modifi le 28 08 01
                            (< (car a) (car b))))))
 
 (defun trie4 (l)
@@ -553,7 +558,7 @@
   (if liste
     (append (car liste) (applatit (cdr liste)))))
 
-;; supprime les silences inutiles dans les accords splités
+;; supprime les silences inutiles dans les accords splits
 ;; 29 janvier 98
 
 (defun supprime-sil (liste)
@@ -561,12 +566,12 @@
 
 ;;==============================================================================
 ;;             BOUCHE-TROU
-;; Ajout le 07 01 2001 pour débuter les *listen* au temps 0 et boucher les éventuels 
-;; trous de temps, de manière à satisfaire la recherche de la liste des barres 
+;; Ajout le 07 01 2001 pour dbuter les *listen* au temps 0 et boucher les ventuels 
+;; trous de temps, de manire  satisfaire la recherche de la liste des barres 
 ;; de mesure: *liste-barres-mesures*
 ;;==============================================================================
 
-(defun bouche-trou (l) ;(print (list "bouche-trou" l))  ;; pour tenir compte des accords 18 01 2001
+(defun bouche-trou (l) ;(format t "bouche-trou l=~S  ~% ~%" l )  ;; pour tenir compte des accords 18 01 2001
   (if (null (cdr l)) l
       (let* ((a1 (car l))
              (a2 (cadr l))
@@ -581,28 +586,35 @@
              )
         (cond ((< grace 100) (cons a1 (bouche-trou (cdr l))))
               ((= dat1 dat2) (if (= dur1 dur2) (cons a1 (bouche-trou (cdr l)))
-                                 (print (list "ERREUR DANS BOUCHE-TROU: NOTES DE MEME DATE MAIS DE DURÉES DIFFÉRENTES" a1 a2))))
+                                 (print (list "ERREUR DANS BOUCHE-TROU: NOTES DE MEME DATE MAIS DE DURES DIFFRENTES" a1 a2))))
               ((= dat2 (+ dat1 dur1)) (cons a1 (bouche-trou (cdr l))))
-              ((> dat2 (+ dat1 dur1)) (cons a1 (cons (list (+ dat1 dur1) chan (- (+ dat1 dur1) dat2) '(20) '(255) nil nil nil layer) (bouche-trou (cdr l)))))
+              ((> dat2 (+ dat1 dur1)) (cons a1 (cons (list (+ dat1 dur1) chan (- (+ dat1 dur1) dat2) '(20) '(255) nil nil nil layer nil) (bouche-trou (cdr l)))))
               (t (print (list "ERREUR DANS BOUCHE-TROU: CHEVAUCHEMENT DE NOTES DANS RECODAGE FINAL" a1 a2)))))))
 
-(defun bouche-debut (l)
+(defun bouche-debut (l) ;(format t "bouche-debut l=~S  ~% ~%" l )
   (if l
     (let* ((a (car l))
            (dat (car a))
            (chan (second a))
            (layer (ninth a)))
       
-      (cond ((> dat 0) (cons (list 0 chan (- 0 dat) '(20) '(255) nil nil nil layer) l))
+      (cond ((> dat 0) (cons (list 0 chan (- 0 dat) '(20) '(255) nil nil nil layer nil) l))
             ((= 0 dat) l)
-            (t (print (list "erreur dans BOUCHE-DEBUT: date négative" a)))))))
+            (t (print (list "erreur dans BOUCHE-DEBUT: date ngative" a)))))))
+
+
+ 
+
 
 (defun trie-layer (l n)     ;; modif du 11 11 01 pour introduction des layers FINALE
+  ;(format t "trie-layer l=~S ~%" l)
   (if l
     (progn
-      (let ((a (ninth (car l))))
+      (let ((a (ninth (car l)))) 
         (if (= a n) (cons (car l) (trie-layer (cdr l) n))
         (trie-layer (cdr l) n)))) nil))
+
+
 
 
 ;;(trie-layer '((10 1 2 3 4 5 6 7 1) (8 1 2 3 4 5 6 7 1) (10 1 2 3 4 5 6 7 2)) 1)
@@ -612,45 +624,54 @@
 
   (let ((res nil) tmp)
     (when l 
-      (dotimes (i 4)
+      (dotimes (i 4) ;(format t "trie-layer-canal l=~S tmp=~S res=~S ~% ~%" l tmp res)
         (when (setq tmp (trie-layer l (1+ i)))
-          (setq res (cons (bouche-trou (bouche-debut (reunir (trie  tmp)))) res ))
+           (setq res (cons (bouche-trou (bouche-debut (reunir (trie  tmp)))) res ))
           )))
     res))
 
 ;;==============================================================================
 ;;             PREPA-LISTE
 ;; Nouveau PREPA-LISTE qui calcule aussi une liste de rythme
-;; dont chaque éléments (relatif à chaque layer de chaque canal)
-;; est de la forme (date durée); avec - pour nolet et () pour silence.
+;; dont chaque lments (relatif  chaque layer de chaque canal)
+;; est de la forme (date dure); avec - pour nolet et () pour silence.
 ;; exemple (((0 -2) (2 2) (4 (2)) (6 -2) (8 2) (10 (2))) ((0 -2) (2 4) (6 -2) (8 4))) issue de
-;; (prorythme °0 °0 °16 (gnotes) °0 °(2/3n (1 1 1) 2 -2) °60 °100)
-;; (prorythme °9 °0 °16 (gnotes) °0 °(2/3n (1 -1 1) 4) °60 °100))
+;; (prorythme 0 0 16 (gnotes) 0 (2/3n (1 1 1) 2 -2) 60 100)
+;; (prorythme 9 0 16 (gnotes) 0 (2/3n (1 -1 1) 4) 60 100))
 ;;==============================================================================
 
-(defun calclrythme (l)
+
+(defun calclrythme (l) ;(format t "calclrythme l=~S ~% ~%" l)
   (if l (append (calccanal (car l)) (calclrythme (cdr l)))))
 
-(defun calclrythme2 (l)
-  (if l (append (calccanal2 (car l)) (calclrythme2 (cdr l)))))
 
-(defun calccanal (l)
+
+
+;(defun calclrythme2 (l)
+;  (if l (append (calccanal2 (car l)) (calclrythme2 (cdr l)))))
+
+(defun calccanal (l) ;(format t "calccanal l=~S ~% ~%" l) 
   (if l
     (cons (calccanallayer (enleve-liaison (reunir (car l)))) (calccanal (cdr l)))))
 
-(defun calccanal2 (l)
-  (if l
-    (cons (calccanallayer2 (enleve-liaison (reunir (car l)))) (calccanal2 (cdr l)))))
+;(defun calccanal2 (l)
+;  (if l
+;    (cons (calccanallayer2 (enleve-liaison (reunir (car l)))) (calccanal2 (cdr l)))))
 
 ;; l est un liste commencant par + (par ex: (+ 1 (+ (* (FDUR 2 3 D-N) 1) (* (FDUR 2 3 D-C) 1/2))))
-  (defun enleve-liaison0 (l)
+
+
+  (defun enleve-liaison0 (l) ;(format t "enleve-liaison000000 l=~S ~% ~%" l)
          (cond ((numberp l) (list l))
                ((and (listp l) (equal (car l) '+)) (cons (second l) (enleve-liaison0 (third l))))
                ((and (listp l) (equal (car l) '*)) (list l))
                (t (list "erreur de rythme dans ENLEVE-LIAISON" l))))
 
+
 ;; (enleve-liaison0 '(+ 1 (+ (* (FDUR 2 3 D-N) 1) (* (FDUR 2 3 D-C) 1/2))))
 ;; -->(1 (* (FDUR 2 3 D-N) 1) (* (FDUR 2 3 D-C) 1/2))
+
+
 
 (defun cons-sous-liste (dat chan lr reste)
   (if lr
@@ -661,7 +682,9 @@
 ;; (5/3 0 (* (FDUR 2 3 D-C) 1/2) (60) (255) 100 NIL NIL 1))
  
 
-(defun enleve-liaison (ll) ;; transforme la liste d'événement en supprimant les liaisons
+
+
+(defun enleve-liaison (ll) ;(format t "enleve-liaison ll=~S ~% ~%" ll);; transforme la liste d'vnement en supprimant les liaisons --> correction 10 septembre 2012
   (if ll
     (let* ((a (car ll))
            (a1 (car a))
@@ -669,16 +692,23 @@
            (a3 (third a)))
           (if (numberp a3) (cons a (enleve-liaison (cdr ll)))
               (if (equal (car a3) '+) 
-                (append (cons-sous-liste a1 a2 (enleve-liaison0 a3) (last a 6)) (enleve-liaison (cdr ll)))
+                (append (cons-sous-liste a1 a2 (enleve-liaison0 a3) (last a 8)) (enleve-liaison (cdr ll))) ;; (last a 7) au lieu de (last a 6) correction du 10 septembre 2012
                 (cons a (enleve-liaison (cdr ll))))))))
+
+
+  
  
+
+
+
 (defun calccanallayer (l)
-  ;(print (list "calccanallayer" l))
+   ;(format t "calccanallayer l=~S ~% ~%" l) 
   (if l
     (let* ((a (car l))
            ;(a1 (first a))
            (a2 (third a))
            (grace (car (fifth a))))
+      
        (if (numberp a2)
         (if (> a2 0) (if (> grace 100) (cons a2 (calccanallayer (cdr l))) (calccanallayer (cdr l)))
             (cons (list (abs a2)) (calccanallayer (cdr l))))
@@ -711,7 +741,7 @@
           (if (equal (car a2) '*)
             (let* ((a3 (second a2))
                    (v (* (second a3) (eval (fourth a3))))) 
-              (cons (/ (- 0 v) 2) (cons (/ (- 0 v) 2) ( calccanallayer (clc  v l 0))))) ;<---- LIGNE DIFFÉRENTE!
+              (cons (/ (- 0 v) 2) (cons (/ (- 0 v) 2) ( calccanallayer (clc  v l 0))))) ;<---- LIGNE DIFFRENTE!
             (if (equal a2 nil) (calccanallayer (cdr l))
                 (print (list "Erreur de rythme dans CALCCANALLAYER " a)))))))))
 
@@ -721,9 +751,10 @@
 
 ;;================================================================================================= 
 ;;            PREPA-LISTE
-;; Construit une super liste à partir des *liste.n* 
+;; Construit une super liste  partir des *liste.n* 
 ;; et calcule la liste des barres de mesure: *liste-barres-mesures* (NOUVEL ALGORYTHME AU 30 11 2001)
 ;;=================================================================================================
+
 
 (defun calclrythme2 (l)
   (if l (append (calccanal2 (car l)) (calclrythme2 (cdr l)))))
@@ -738,7 +769,7 @@
     (let* ((a (car l))
            (a1 (first a))
            (a2 (third a))
-           (grace (car (fifth a))))  
+           (grace (car (fifth a)))) 
       (if (numberp a2)
         (if (> a2 0) (if (> grace 100) (cons (list a1 a2) (calccanallayer2 (cdr l))) (calccanallayer2 (cdr l)))
             (cons (list a1 (list (abs a2))) (calccanallayer2 (cdr l))))
@@ -753,18 +784,22 @@
 ; --> ((0 2) (2 -4))
 
 
-(defun clc (v l &optional (compt 0)) ;; retourne la liste l privée des premiers éléments dont la somme des durées = v
+
+(defun clc (v l &optional (compt 0)) ;; retourne la liste l prive des premiers lments dont la somme des dures = v
   (if l
-    (let* ((a (car l))
-           (a2 (third a))
-           (a3 (fifth a))
-           (grace (car a3))
-           (a5 (if (> grace 100) (abs(eval a2)) 0)) ;; pour ne pas prendre en compte les grace notes
-           (valolet (+ compt a5)))
-      (cond
-       ((= valolet v) (cdr l))
-       ((< valolet v) (clc v (cdr l) valolet))
-       (t (print (list "Erreur de rythme dans CLC" (car l))))))))
+      (let* ((a (car l))
+             (a2 (third a))
+             (a3 (fifth a))
+             (grace (car a3))
+             (a5 (if (> grace 100) (abs(eval a2)) 0)) ;; pour ne pas prendre en compte les grace notes
+             (valolet (+ compt a5)))
+        ;(print (list " dans CLC:  valolet v l ="  valolet v l))
+        (cond
+         ((= valolet v) (cdr l))
+         ((< valolet v) (clc v (cdr l) valolet))
+         (t (print (list "Erreur de rythme dans CLC: valolet v (car l) =" valolet v (car l))))))))
+
+
 #|
 ; ancienne version 2001
 (defun prepa-liste ()
@@ -777,17 +812,27 @@
                       (trie-layer-canal *liste20*) (trie-layer-canal *liste21*) (trie-layer-canal *liste22*) (trie-layer-canal *liste23*)
                       (trie-layer-canal *liste24*) (trie-layer-canal *liste25*) (trie-layer-canal *liste26*) (trie-layer-canal *liste27*)
                       (trie-layer-canal *liste28*) (trie-layer-canal *liste29*) (trie-layer-canal *liste30*) (trie-layer-canal *liste31*))))
-    ;(setq *liste-canal* (calclcanal ltotal))    ;; calcule la liste des canaux utilisés
+    ;(setq *liste-canal* (calclcanal ltotal))    ;; calcule la liste des canaux utiliss
     (setq *liste-barres-mesures* (cherche-mesure0 '(4 3 2 1) 
-                                  ;;  liste modifiée le 17 01 2002 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2) 
-                                           ;; liste modifiée le 28 11 01 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2) 
-                                                  (supermixrythm (calclrythme ltotal)))) ;; calcule les listes de durées par canal et par layer
+                                  ;;  liste modifie le 17 01 2002 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2) 
+                                           ;; liste modifie le 28 11 01 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2) 
+                                                  (supermixrythm (calclrythme ltotal)))) ;; calcule les listes de dures par canal et par layer
    ;(print ltotal)
    ltotal))
 
 |#
 
-(defun prepa-liste ()
+
+
+;; ************************ pour tester si il y a rellement une liste  afficher dans finale (22 09 2012)
+(defun liste-vide? (l)
+  (if l
+      (if (eq (car l) nil)
+          (liste-vide? (cdr l))
+        nil) t))
+
+
+(defun prepa-liste () 
   
   (let ((ltotal (list (trie-layer-canal (copy-tree *liste0*)) (trie-layer-canal (copy-tree *liste1*)) (trie-layer-canal (copy-tree *liste2*)) (trie-layer-canal (copy-tree *liste3*))
                       (trie-layer-canal (copy-tree *liste4*)) (trie-layer-canal (copy-tree *liste5*)) (trie-layer-canal (copy-tree *liste6*)) (trie-layer-canal (copy-tree *liste7*))
@@ -801,13 +846,27 @@
                       (trie-layer-canal (copy-tree *liste32*)) (trie-layer-canal (copy-tree *liste33*)) (trie-layer-canal (copy-tree *liste34*)) (trie-layer-canal (copy-tree *liste35*))
                       (trie-layer-canal (copy-tree *liste36*)) (trie-layer-canal (copy-tree *liste37*)) (trie-layer-canal (copy-tree *liste38*)) (trie-layer-canal (copy-tree *liste39*))
                       (trie-layer-canal (copy-tree *liste40*)) (trie-layer-canal (copy-tree *liste41*)) (trie-layer-canal (copy-tree *liste42*)) (trie-layer-canal (copy-tree *liste43*))
-                      (trie-layer-canal (copy-tree *liste44*)) (trie-layer-canal (copy-tree *liste45*)) (trie-layer-canal (copy-tree *liste46*)) (trie-layer-canal (copy-tree *liste47*))))) 
-    ;(setq *liste-canal* (calclcanal ltotal))    ;; calcule la liste des canaux utilisés
-    (setq *liste-barres-mesures* (cherche-mesure0 '(4 3 2 1 5/2 7/2 9/2 3/2 1/2 9/4 13/4 17/4 5/4 3/4) 
-                                                  ;;  liste modifiée le 17 01 2002 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2) 
-                                           ;; liste modifiée le 28 11 01 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2) 
-                                                  (supermixrythm (calclrythme ltotal)))) ;; calcule les listes de durées par canal et par layer
+                      (trie-layer-canal (copy-tree *liste44*)) (trie-layer-canal (copy-tree *liste45*)) (trie-layer-canal (copy-tree *liste46*)) (trie-layer-canal (copy-tree *liste47*)))))
+
+    ;(print (list "prepa-liste ltotal= " ltotal))
+
+    
+    (if (not (liste-vide? ltotal))
+        (setq *liste-barres-mesures* (cherche-mesure0 '(4 3 2 1 5/2 7/2 9/2 3/2 1/2 9/4 13/4 17/4 5/4 3/4) (supermixrythm (calclrythme ltotal))))  ;; calcule les listes de dures par canal et par layer
+      (progn
+        (print (list "liste vide dans prepa-liste: ---> abort"))
+        (abort)))
+
+
+    ;;  liste modifie le 17 01 2002 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2) 
+    ;; liste modifie le 28 11 01 '(4 3 2 5 7/2 9/2 5/2 3/2 1 1/2) 
+                                                  
+                                                 
+    ;; calcule les listes de dures par canal et par layer
+
+    ;(print (list "prepa-liste: ltotal" ltotal))
     ltotal))
+
 
 ;; ------------------------------------------------------------------------------
 ;;          CODAGE DES RYTHMES
@@ -861,7 +920,7 @@
              ((null l) ())
              (t (error "wrong rythm : ~S" l))))
 
-(defun prefixplus (l)
+(defun prefixplus (l) 
   (cond ((null l) l)
         ((null (cdr l)) l)
         ((eq (second l) '+)
@@ -885,7 +944,7 @@
 ;(long-rythme '(1 + 2/3b (2 -2 2) + 10 20))
 
 ;; ----------------------------------------------------------------------
-;; Pour préparer les listes servant à déterminer les mesures
+;; Pour prparer les listes servant  dterminer les mesures
 ;; ----------------------------------------------------------------------
 
 (defun traduit-dur-symb-mesure (ds)        ;;------------- rajout 4 01 2001
@@ -954,10 +1013,11 @@
   (setq *first-ev* (1+ *cur-n*))
   (setq *cur-pos* 0))
 
-(defun fin-layer (n version)
+(defun fin-layer (n version) 
   (if (not *end-mesure*) 
     (progn (setq *mes-non-finie* t)
-           (decode-dur nil (- *cur-pos* *long-mes*) nil '(255) 0 nil nil version nil n)))  
+           (decode-dur nil (- *cur-pos* *long-mes*) nil '(255) 0 nil nil nil nil version nil n)))  
+
   ;(format t "dans fin-layer ******** *cur-pos*=~S ~%" *cur-pos*)
   ;(format t "dans fin-layer ******** *long-mes*=~S ~%" *long-mes*)
   (setq *end-mesure* t)
@@ -969,7 +1029,7 @@
 
 ;;================================================================================================= 
 ;;            DECODE-LAYER
-;; Pour un canal donné, onstruit les différents sous-fichiers ENIGMA
+;; Pour un canal donn, onstruit les diffrents sous-fichiers ENIGMA
 ;; 
 ;;=================================================================================================
 
@@ -978,53 +1038,86 @@
     (let* ((item (first liste))
            (special (fifth item))
            (expression (seventh item))
+           (expressionlayer (tenth item))
+           (articulation (nth 10 item))  ;; ajout de Mai 2012 (11 me champ)
            (pgchange (eighth item))
-           (haut (car (fourth item)))) 
+           (haut (car (fourth item)))
+           ;;(dat (first item))
+           ;;(chan (second item))
+           ) 
+
+      ;(format t "dans decode-layer ******** liste=~S ~%" liste)
+      ;(format t "dans decode-layer ******** item=~S expressionlayer=~S ~%" item expressionlayer)
+      ;(format t "dans decode-layer ******** articulation=~S ~%" articulation)
+
       (setq *premier* t)
       (if (cdr liste)
         (setq *dernier* nil)
         (setq *dernier* t))
       (setq *pos-cour* (first item))
       
-      ;(print (list "DECODE-CHAN" expression "LISTE" liste))
       
       (if (and expression (> haut 0)) 
         (let ((b (expression-actuelle expression haut)))
           (cond ((= b 0) (setq expression nil) (setq num-expres-en-cours 0)) ;la hauteur ne figure dans aucun interval
-                ((= b num-expres-en-cours) (setq expression nil))            ;deux notes successives avec même expression
+                ((= b num-expres-en-cours) (setq expression nil))            ;deux notes successives avec mme expression
                 (t (setq num-expres-en-cours b) (setq expression num-expres-en-cours))))) ;changement d'expression--> expression devient num-expres-en-cours
+
+    ; (if expressionlayer    ; envoi de la note bascule layer de l'chantilloneur
+     ;    (progn
+    ;       (p-abs (* noi dat))
+     ;      (midi-write-ev *out* (note :pitch (first expressionlayer)  :dur noi :vel 10 :chan (nchan chan) :port (nport chan)))))
+          
+
+
 
       (if (and pgchange (> haut 0))
         (if (= pgchange num-pgchg-en-cours) (setq pgchange nil)
             (setq num-pgchg-en-cours pgchange)))
       
-      ;(format t "dans decode-chan ******** item=~S ~%" item)
-      ;(format t "dans decode-chan ******** *pos-cour*=~S ~%" *pos-cour*)
-      ;(format t "dans decode-chan ******** total-pos=~S ~%" total-pos)
-      ;(format t "dans decode-chan *** *pos-cour*=~S *cur-pos*=~S dur==~S total-pos=~S first item=~S ~%" *pos-cour* *cur-pos* (third item) total-pos (first item))
+      ;(format t "dans decode-layer ******** item=~S ~%" item)
+      ;(format t "dans decode-layer ******** *pos-cour*=~S ~%" *pos-cour*)
+      ;(format t "dans decode-layer ******** total-pos=~S ~%" total-pos)
+      ;(format t "dans decode-layer *** *pos-cour*=~S *cur-pos*=~S dur==~S total-pos=~S first item=~S ~%" *pos-cour* *cur-pos* (third item) total-pos (first item))
       ;(format t "~%" )
       
       (if (> *pos-cour* total-pos)      
         (let ((x (- total-pos *pos-cour*)))
           (setq total-pos (+ total-pos  (abs x))) 
-          (decode-dur (second liste) x nil special (sixth item) expression pgchange version)))
+           (decode-dur (second liste) x nil special (sixth item) expression (second expressionlayer) pgchange version)))
       
-      (if (not (gracenote? special))   ;; cas général 
+      (if (not (gracenote? special))   ;; cas gnral 
         (setq total-pos (+ total-pos (special-evaluate (third item)))))
       
-      (decode-dur (second liste) (third item) (fourth item) special (sixth item) expression pgchange version)  
+      ;(decode-dur (second liste) (third item) (fourth item) special (sixth item) expression (second expressionlayer) pgchange version)  
+      (decode-dur (second liste) (third item) (fourth item) special (sixth item) expression expressionlayer pgchange articulation version)
       (setq *premier* nil)
-      (if (cdr liste) (decode-layer-suite (cdr liste) total-pos num-expres-en-cours num-pgchg-en-cours version ) total-pos))))
+      (if (cdr liste) 
+         ; (decode-layer-suite (cdr liste) total-pos num-expres-en-cours (second expressionlayer) num-pgchg-en-cours version )
+        (decode-layer-suite (cdr liste) total-pos num-expres-en-cours expressionlayer num-pgchg-en-cours version )
+        total-pos))))
 
-(defun decode-layer-suite (liste total-pos num-expres-en-cours num-pgchg-en-cours version)    ;; codification des autres items de la liste
+
+
+
+
+(defun decode-layer-suite (liste total-pos num-expres-en-cours num-expreslayer-en-cours num-pgchg-en-cours version)    ;; codification des autres items de la liste
     (if liste
     (let* ((item (first liste))
            (special (fifth item))
            (expression (seventh item))
+           (expressionlayer (tenth item))
+           (articulation (nth 10 item))  ;; ajout de Mai 2012 (11 me champ)
            (pgchange (eighth item))
-           (haut (car (fourth item))))
+           (haut (car (fourth item)))
+           ;;(dat (first item))
+           ;;(chan (second item))
+           )
       ;;(format t "dans decode-layer-suite *** *pos-cour*=~S *cur-pos*=~S dur==~S total-pos=~S first item=~S ~%" *pos-cour* *cur-pos* (third item) total-pos (first item))
       ;;(format t "dans decode-layer-suite *end-mesure*=~S item=~S ~%" *end-mesure* item)
+      ;;(format t "dans decode-layer-suite  liste=~S ~%" liste)
+      ;;(format t "dans decode-layer-suite  expressionlayer=~S ~%" expressionlayer)
+      ;;(format t "dans decode-layer-suite  articulation=~S ~%" articulation)
 
       (if (not (entre special 2 99))
         (setq *pos-cour* (first item)))
@@ -1032,8 +1125,23 @@
       (if (and expression (> haut 0)) 
         (let ((b (expression-actuelle expression haut)))
           (cond ((= b 0) (setq expression nil) (setq num-expres-en-cours 0)) ;la hauteur ne figure dans aucun interval
-                ((= b num-expres-en-cours) (setq expression nil))            ;deux notes successives avec même expression
+                ((= b num-expres-en-cours) (setq expression nil))            ;deux notes successives avec mme expression
                 (t (setq num-expres-en-cours b) (setq expression num-expres-en-cours)))))  ;changement d'expression--> expression devient num-expres-en-cours
+
+#|   
+        supression: ce calcul est ralis par noteli via la fonctionn f-layersynth (16-04-2012)
+
+
+      (if (and expressionlayer (> haut 0))
+          (if (= (second expressionlayer) num-expreslayer-en-cours)  
+              (setq expressionlayer nil)                       ;on reste dans le mme layer de l'chantilonneur
+            (progn
+              (p-abs (* noi dat))
+              (midi-write-ev *out* (note :pitch (first expressionlayer)  :dur noi :vel 10 :chan (nchan chan) :port (nport chan)))
+              (setq num-expreslayer-en-cours (second expressionlayer)))) ) ; on a chang de layer et envoi de la note bascule layer de l'chantilloneur
+|#
+
+
 
       (if (and pgchange (> haut 0))
         (if (= pgchange num-pgchg-en-cours) (setq pgchange nil)
@@ -1047,14 +1155,15 @@
       (if (> *pos-cour* total-pos)     
         (let ((x (- total-pos *pos-cour*))) 
           (setq total-pos (+ total-pos  (abs x))) 
-          (decode-dur (second liste) x nil special (sixth item) expression pgchange version))) 
+          (decode-dur (second liste) x nil special (sixth item) expression (second expressionlayer) pgchange version))) 
       
       (if (not (gracenote? special)) 
         (setq total-pos (+ total-pos (special-evaluate (third item))))) 
       
       (if (not (cdr liste)) (setq *dernier* t))
-      (decode-dur (second liste) (third item) (fourth item) special (sixth item) expression pgchange version) 
-      (decode-layer-suite (cdr liste) total-pos num-expres-en-cours num-pgchg-en-cours version))
+      ;(decode-dur (second liste) (third item) (fourth item) special (sixth item) expression (second expressionlayer) pgchange version) 
+      (decode-dur (second liste) (third item) (fourth item) special (sixth item) expression expressionlayer pgchange articulation version)
+      (decode-layer-suite (cdr liste) total-pos num-expres-en-cours num-expreslayer-en-cours num-pgchg-en-cours version))
 
     total-pos))
 
@@ -1095,7 +1204,7 @@
 
 ;;================================================================================================= 
 ;;            DECODE
-;; Construit canal par canal les différents sous-fichiers ENIGMA
+;; Construit canal par canal les diffrents sous-fichiers ENIGMA
 ;; 
 ;;=================================================================================================
 
@@ -1104,9 +1213,12 @@
 (defun decode (version)
   ;(setq *liste-barres-mesures* (calcul-liste-mesure))  ;;(append (calcul-liste-mesure) (list 4)))
    (init-codage)
-  (decode-file (prepa-liste) version))  ;; 112 11 01 à présent prepa-liste calcule *liste-barres-mesures*
+  (decode-file (prepa-liste) version))  ;; 112 11 01  prsent prepa-liste calcule *liste-barres-mesures*
 
-(defun decode-file (liste version)
+
+
+(defun decode-file (liste version) 
+;(print (list "decode-file --> liste  " liste))
   (if liste
     (let ((chan-liste (car liste))) ;; codification par canal 
       (when chan-liste 
@@ -1125,7 +1237,7 @@
 
 ;;================================================================================================= 
 ;;            DECODE-CHAN
-;; Pour un canal donné, construit les différents sous-fichiers ENIGMA
+;; Pour un canal donn, construit les diffrents sous-fichiers ENIGMA
 ;; 
 ;;=================================================================================================
 
@@ -1161,14 +1273,14 @@
         (code-GF01 (trie12 (reverse *lprov-GF*))))
 
 ;--------------------------------------------------------------------
-(defun ote (a l &optional (res nil)) ; ote tous les éléments a d'une liste l
+(defun ote (a l &optional (res nil)) ; ote tous les lments a d'une liste l
   (if l
     (if (equal a (car l)) (ote a (cdr l) res) (ote a (cdr l) (cons (car l) res)))
     (reverse res)))
 
 ; (ote 5 '(2 3 5 7 5)) --> (2 3 7)
 
-(defun otelist (l1 l2) ; ote les éléments de la liste l1 de la liste l2
+(defun otelist (l1 l2) ; ote les lments de la liste l1 de la liste l2
   (if l1
     (otelist (cdr l1) (ote (car l1) l2)) l2))
 
@@ -1176,18 +1288,18 @@
 ; (otelist '((1 1 (1 7)) (1 1 (4 1))) '((1 1 (4 1)) (1 1 (1 7)) (1 2 (4 3)) (1 2 (1 9)) (1 3 (4 5)) (1 3 (1 11))))
 ; --> ((1 2 (4 3)) (1 2 (1 9)) (1 3 (4 5)) (1 3 (1 11)))
 
-;; Pour 1 staff et 1 mesure donnée, regroupe les n° de layer
-;; dans une même liste de type (n°Staff n°Mesure (n°Layer refFR) (n°Layer refFR) (n°Layer refFR) ....)
+;; Pour 1 staff et 1 mesure donne, regroupe les n de layer
+;; dans une mme liste de type (nStaff nMesure (nLayer refFR) (nLayer refFR) (nLayer refFR) ....)
                                                   
 (defun regroupe (l &optional (res (reverse (2pr (car l)))))
   (if l (regroupe (cdr l) (cons (third (car l)) res)) (reverse res)))
 
-; (regroupe '((1 1 (1 7)) (1 1 (4 1)))) --> (1 1 (1 7) (4 1)) ;Ex pour le staf 1, mesure 1 qui possède les layer 1 et 4
+; (regroupe '((1 1 (1 7)) (1 1 (4 1)))) --> (1 1 (1 7) (4 1)) ;Ex pour le staf 1, mesure 1 qui possde les layer 1 et 4
 
 
-;; Pour un canal donné:
+;; Pour un canal donn:
 
-(defun transf-lprov-GF (l &optional (res nil)) ;Pour un canal donné, regroupe les infos layer d'une mesure dans 1 même liste
+(defun transf-lprov-GF (l &optional (res nil)) ;Pour un canal donn, regroupe les infos layer d'une mesure dans 1 mme liste
   (if l
     (let* ((a (2pr (car l)))
            (l1 (extraitl04 a l))
@@ -1199,10 +1311,10 @@
 ; --> ((1 1 (1 7) (4 1)) (1 2 (1 9) (4 3)) (1 3 (1 11) (4 5)))
 
 ;------------------------- version 2004 ----------------------------
-(defun decode-chan04 (liste version)
+(defun decode-chan04 (liste version) 
   (when liste
     (let* ((l (car liste))
-           (lay (ninth (car l))))
+           (lay (ninth (car l)))) 
       (if l 
         (progn (setq *layer* lay) 
                (init-code-layer) 
@@ -1220,11 +1332,15 @@
 #|
 |#
 
-(defun decode-dur (item2 dur haut special vel expression pgchange &optional version (liaisag nil) (liaisad nil))
+(defun decode-dur (item2 dur haut special vel expression expressionlayer pgchange articulation &optional version (liaisag nil) (liaisad nil))
   ;(format t "dans decode-dur ******** dur=~S item2=~S ~%" dur item2)
   ;(format t "dans decode-dur ******** item2=~S ~%" item2)
   ;(format t "dans decode-dur ******** special=~S ~%" special)
   ;(format t "dans decode-dur ******** haut=~S ~%" haut)
+  ;(format t "dans decode-dur ******** pgchange=~S ~%" pgchange)
+  ;(format t "dans decode-dur ******** expressionlayer=~S haut=~S ~%" expressionlayer haut)
+  ;(format t "dans decode-dur ******** articulation=~S  ~%" articulation)
+
   (if (nuplet1? dur special) (traite-n-uplet1 dur special))
   (setq *vrai-dernier* nil)
   
@@ -1232,20 +1348,22 @@
     (cond
      
      ((and ld (eq 0 (first-liaison dur)))
-      (decode-dur item2 (second-liaison dur) haut special vel expression pgchange version liaisag liaisad))
+      (decode-dur item2 (second-liaison dur) haut special vel expression expressionlayer pgchange articulation version liaisag liaisad))
      
      (ld 
       (setq *liaison* t)
-      (decode-dur item2 (first-liaison dur) haut special vel expression pgchange version liaisag t) 
+      (decode-dur item2 (first-liaison dur) haut special vel expression expressionlayer pgchange articulation version liaisag t) 
       (setq *liaison* nil)
       (setq *premier* nil)
-      (decode-dur item2 (second-liaison dur) haut '(255) vel nil nil version t liaisad))         ; le 29 08 01
+      (decode-dur item2 (second-liaison dur) haut '(255) vel nil nil nil nil version t liaisad))         ; le 29 08 01
      
      (t
       ;(format t "avant ddnl *cur-pos* = ~S, *long-mes* = ~S,  rythme = ~S ~%" *cur-pos* *long-mes* dur)
       ;(if (> (+ *cur-pos* (special-evaluate dur)) *long-mes*)
        ; (format t ">>>>split de nolet: duree premiere partie = ~S, duree-totale = ~S,  ~%" (- *long-mes* *cur-pos*) (special-evaluate dur)))
-      (decode-dur-nonliaison dur haut special vel liaisag liaisad expression pgchange version)))))
+      (decode-dur-nonliaison dur haut special vel liaisag liaisad expression expressionlayer pgchange articulation version)))))
+
+
 
 
 (defun init-decode-dur-nonliaison (dur)
@@ -1254,43 +1372,50 @@
   (setq *dur-symb* (abs (get-dur dur))) 
   (setq *silence* (sign (get-dur dur))))
 
-(defun decode-dur-nonliaison ( dur  haut special vel liaisag liaisad expression pgchange version) 
+
+
+
+(defun decode-dur-nonliaison ( dur  haut special vel liaisag liaisad expression expressionlayer pgchange articulation version) 
   
+  ;(format t "dans decode-dur-nonliaison ******** articulation =~S ~%" articulation)
   ;(format t "dans decode-dur-nonliaison ******** liaisag =~S ~%" liaisag)
   ;(format t "dans decode-dur-nonliaison ******** liaisad =~S ~%" liaisad)
+  ;(format t "dans decode-dur-nonliaison ******** pgchange =~S ~%" pgchange)
 
-  ;(format t "dans decode-dur-nonliaison ******** special=~S ~%" special)
+  ;;(format t "dans decode-dur-nonliaison ******** special=~S ~%" special)
   ;;(format t "dans decode-dur-nonliaison ******** dur=~S ~%" dur)
   ;;(format t "dans decode-dur-nonliaison ******** *cur-pos*=~S ~%" *cur-pos*)
   ;;(format t "dans decode-dur-nonliaison ******** *dur-mesure*=~S ~%" *dur-mesure*)
+  ;;(format t "dans decode-dur-nonliaison ******** expressionlayer=~S ~%" expressionlayer)
+
   (init-decode-dur-nonliaison dur)                     ; calcul de *vrai-dur* *dur-symb* *silence*
   (cond
    ((and (not (gracenote? special)) (sup-mesure? *vrai-dur*))
     (let ((val-dur (- *long-mes* *cur-pos*)))                    ;; rajout le 18 12 2000
-      (decode-split-of-dur1  val-dur haut special vel liaisag nil expression pgchange version)
+      (decode-split-of-dur1  val-dur haut special vel liaisag nil expression expressionlayer pgchange articulation version)
       ;(format t "dans decode-dur-nonliaison avant split2 *vrai-dur*=~S val-dur=~S ~%" *vrai-dur* val-dur)
-      (decode-split-of-dur2 (- *vrai-dur*  (abs val-dur)) haut special vel nil liaisad version))) 
+      (decode-split-of-dur2 (- *vrai-dur*  (abs val-dur)) haut special vel nil liaisad articulation version))) 
    (t (setq *suivant* nil)
       (setq *precedent* nil)
       (if (and *dernier* (not liaisad)) (setq *vrai-dernier* t))
-      (code-note *vrai-dur* *dur-symb* haut special vel liaisag liaisad expression pgchange version))))
+      (code-note *vrai-dur* *dur-symb* haut special vel liaisag liaisad expression expressionlayer pgchange articulation version))))
 
 ;; ------------------------------------------------------------------------------
 ;;             Passage de la barre de mesure
 ;; ------------------------------------------------------------------------------
 
-(defun decode-split-of-dur1 ( dur haut special vel liaisag liaisad expression pgchange version) 
+(defun decode-split-of-dur1 ( dur haut special vel liaisag liaisad expression expressionlayer pgchange articulation version) 
   ;(format t "dans decode-split-of-dur1 ******** special=~S ~%" special)
   ;(format t "dans decode-split-of-dur1 ******** dur=~S ~%" dur)
   (setq *suivant* t)
   (setq *precedent* nil)
   ;(format t "dans decode-split-of-dur1 ******** *suivant*=~S ~%" *suivant*)
-  (code-note dur dur haut special vel liaisag liaisad expression pgchange version)   ;; on transmet "expression" et pgchange pour la 1ère partie de la note 
+  (code-note dur dur haut special vel liaisag liaisad expression expressionlayer pgchange articulation version)   ;; on transmet "expression" et pgchange pour la 1re partie de la note 
   (setq *premier* nil))
 
-(defun decode-split-of-dur2  ( dur haut special vel liaisag liaisad version)
+(defun decode-split-of-dur2  ( dur haut special vel liaisag liaisad articulation version)
   ;(format t "dans decode-split-of-dur2 ******** special=~S ~%" special)
-  (if (or (= (car special) 253) (= (car special) 254)) (setq special '(255)))  ;1 09 01 pas d'articulation (stac ou gliss) sur les notes liées
+  (if (or (= (car special) 253) (= (car special) 254)) (setq special '(255)))  ;1 09 01 pas d'articulation (stac ou gliss) sur les notes lies
   ;(format t "dans decode-split-of-dur2 ******** dur=~S ~%" dur)
   ;(format t "dans decode-split-of-dur2 ******** *long-mes*=~S ~%" *long-mes*)
   (setq *precedent* t)
@@ -1299,13 +1424,13 @@
       (let ((mem-long-mes *long-mes*)) ;; RAJOUT LE 6 01 2001 
         (setq *suivant* t)
       (setq *vrai-dernier* nil)
-      (code-note *long-mes* *long-mes* haut special vel liaisag liaisad nil nil version)   ;; rajout le 18 12 2000  ;; on transmet "nil" pour l'expression et pgchange de la sde partie de la note 
+      (code-note *long-mes* *long-mes* haut special vel liaisag liaisad nil nil nil articulation version)   ;; rajout le 18 12 2000  ;; on transmet "nil" pour l'expression et pgchange de la sde partie de la note 
       ;(format t "dans decode-split-of-dur2 >>>>>>>>>>>>>>>>>>>>>>>>>>dur=~S *long-mes*=~S ~%" dur *long-mes*)
-      (decode-split-of-dur2 (- dur mem-long-mes) haut special vel liaisag liaisad version)))   ;; rajout le 18 12 2000
+      (decode-split-of-dur2 (- dur mem-long-mes) haut special vel liaisag liaisad articulation version)))   ;; rajout le 18 12 2000
     (progn                    ;; on passe ici
       (setq *suivant* nil)
       (if (not liaisad) (setq *vrai-dernier* t))
-      (code-note dur dur haut special vel liaisag liaisad nil nil version) ;; on transmet "nil" pour l'expression et pgchange de la sde partie de la note
+      (code-note dur dur haut special vel liaisag liaisad nil nil nil nil version) ;; on transmet "nil" pour l'expression et pgchange et articulation de la sde partie de la note
       (setq *silence* nil) 
       )))
 
@@ -1380,7 +1505,7 @@
           (progn (setq *2-en-cours* nil)
                  (code-nuplet *dur-uplet2* *num-uplet2* *cur-n* 2)))))))
 
-;; ATTENTION PAS DE NOTE LIÉE A UN SILENCE DU TYPE:
+;; ATTENTION PAS DE NOTE LIE A UN SILENCE DU TYPE:
 ;; (+ (* (FDUR 2 3 C) 1/2) (* (FDUR 2 3 C) (FDUR 2 3 DC) -1/2))
 ;; PLACER UN MESSAGE D'ERREUR
 
@@ -1423,13 +1548,22 @@
 ;; (0 2 1/2 (62 69) (1)) (0 2 1/2 (63 70) (2)) (0 2 1/2 (60 67) (99)) (0 2 1 (61 68) (255))     ; 27 08 01
 ;; ------------------------------------------------------------------------------
 
-(defun reunir (l)  ;; transforme l'ensemble des notes de même date et même durée (le reste étant identique) en accord
+
+
+(defun reunir (l) ;(format t "reunir l=~S ~% ~%" l) ;; transforme l'ensemble des notes de mme date et mme dure (le reste tant identique) en accord
   (nreverse (reunir1 (cdr l) nil (car l))))
 
 ;;(reunir '((0 0 1 (60) (255) 100 NIL NIL 1) (1 0 1 (62) (255) 100 NIL NIL 1) (1 0 1 (60) (255) 100 NIL NIL 1)))
 ;; -->((0 0 1 (60) (255) 100 NIL NIL 1) (1 0 1 (62 60) (255) 100 NIL NIL))
 
+
+
+
 (defun reunir1 (l r x) 
+  ;(format t "reunir1 l=~S  ~%" l ) 
+  ;(format t "reunir1  r=~S   ~%" r)
+  ;(format t "reunir1  x=~S  ~%" x)
+  ;(format t "reunir1  (cons x r)=~S ~% ~%" (cons x r))
   (if (null l) 
     (cons x r) 
     (if (compatible x (car l))
@@ -1441,9 +1575,11 @@
        (equal (second e1) (second e2)) (equal (fifth e1) (fifth e2)) 
        (equal (seventh e1) (seventh e2)) (equal (eighth e1) (eighth e2)) (equal (ninth e1) (ninth e2))))          ;le 29 08 01  le 19 10 01 le 25 10 01 le 12 11 01
 
-(defun reunir-ev (e1 e2) 
+(defun reunir-ev (e1 e2)
   (list (first e1) (second e1) (third e1) (sort (reunir-pitch (fourth e1) (fourth e2)) #'<) (fifth e1) 
-        (sixth e1) (seventh e1) (eighth e1) (ninth e2)))                          ;;le 19 10 01 le 25 10 01 le 12 11 01
+        (sixth e1) (seventh e1) (eighth e1) (ninth e2) (tenth e2) (nth 10 e2)))                          
+;;le 19 10 01 le 25 10 01 le 12 11 01  :: tentn (pour expressionlayer le 11-04-2012
+;; (nth 10 e2) le 25 septembre 2012 pour :llayersynthe
 
 (defun reunir-pitch (p1 p2)
   (if (numberp p1)
@@ -1472,17 +1608,35 @@
       l))
 
 ;; ------------------------------------------------------------------------------
+;; code-articulation ---> il faudra remplacer les 2 code ci-dessous par celui-ci. Attention l-artic est une liste
+;; ------------------------------------------------------------------------------
+
+(defun code-articulation (n-ev l-artic) ;(print (list "code-articulation n-ev l-artic = " n-ev l-artic))
+  (if l-artic
+      (progn
+        (code-articulation2 n-ev (car l-artic))
+        (code-articulation n-ev (cdr l-artic)))))
+
+(defun code-articulation2 (n-ev n-artic)
+  (setq *liste-des-IM* (cons (format nil "^IM(0,~S) ~S 8 0 16 0"
+                                     n-ev n-artic)
+                             *liste-des-IM*)))
+
+;; ------------------------------------------------------------------------------
 ;; code-staccato
 ;; ------------------------------------------------------------------------------
 
+; ne sert plus
 (defun code-staccato (n-ev)
   (setq *liste-des-IM* (cons (format nil "^IM(0,~S) 1 8 0 16 0"
                                      n-ev)
                              *liste-des-IM*)))
 
 ;; ------------------------------------------------------------------------------             28 08 01
-;; code-glissando      ; 51= numéro de code d'un signe de glissando dans bibal articulations de FINALE
+;; code-glissando      ; 51= numro de code d'un signe de glissando dans bibal articulations de FINALE
 ;; ------------------------------------------------------------------------------
+
+;; ne sert plus (décembre 2012)
 
 (defun code-glissando (n-ev)
   (setq *liste-des-IM* (cons (format nil "^IM(0,~S) 51 16 0 172 0"
@@ -1492,7 +1646,7 @@
 ;; ------------------------------------------------------------------------------             31 08 01
 ;; code-micro-interval   ; code les "articulations finales" + ou - suivant que la hauteur 
                          ; est entre ton et (ton + 1/2 ton) ou (ton - 1/2 ton) et ton
-                         ; et code la forme des têtes de note dans *liste-des-IM*     
+                         ; et code la forme des ttes de note dans *liste-des-IM*     
 ;; ------------------------------------------------------------------------------
 
 (defun code-micro-interval (haut n dur-symb)
@@ -1515,13 +1669,13 @@
 ;; ------------------------------------------------------------------------------             19 10 01
 ;; code-expression       ; code les "expressions finales". Utile pour noter les
                          ; modes de jeu ou chgt d'instrument lorsque ceux-ci
-                         ; occupent un même canal MIDI  
+                         ; occupent un mme canal MIDI  
 ;; ------------------------------------------------------------------------------
     
-(defun code-expression (numnote numexpres)
+(defun code-expression (numnote numexpres) 
   (setq *liste-des-expressions* (cons (format nil "^ED(0,~S) ~S 19 160 0 -32768 " numnote numexpres) *liste-des-expressions*)))
 
-;; ---------------- nouveauté FINALE2004 --------------------------------
+;; ---------------- nouveaut FINALE2004 --------------------------------
 
 ;; ------------------------------------------------------------------------------
 ;; code-pages            ; code chaque page de la partition
@@ -1541,7 +1695,7 @@
       (code-pa n (1+ i) (+ 2 j) l))
     (reverse l)))
 
-;; ---------------- nouveauté FINALE2004 --------------------------------
+;; ---------------- nouveaut FINALE2004 --------------------------------
 ;; ------------------------------------------------------------------------------
 ;; code-BC            ; code chaque page de la partition
 ;; ------------------------------------------------------------------------------
@@ -1564,82 +1718,94 @@
 ;; code une note au format FINALE
 ;; ------------------------------------------------------------------------------
 
-(defun code-note ( vrai-dur dur-symb haut special vel liaisag liaisad expression pgchange version)
+(defun code-note ( vrai-dur dur-symb haut special vel liaisag liaisad expression expressionlayer pgchange articulation version)
   
-  ; spécial est le 5eme champ des listes qui code: grace note, staccato, glissando
+  ; spcial est le 5eme champ des listes qui code: grace note, staccato, glissando
   
   ;;(format t " ~%" )
   ;;(format t "dans code-note  ************************************ ~%" )
-  ;;(format t "début code note *liste-note*=~S ~%" *liste-note*)
-  ;;(format t "début code note *cur-pos*=~S ~%" *cur-pos*)
-  ;;(format t "~%début code note *total-des-pos*=~S ~%" *total-des-pos*)
-  ;;(format t "début code note *num-canal-mesure*=~S ~%" *num-canal-mesure*)
-  ;;(format t "début code note vrai-dur=~S ~%" vrai-dur)
-  ;;(format t "début code note dur-symb=~S ~%" dur-symb)
-  ;;(format t "début code note *long-mes*=~S ~%" *long-mes*)
-  ;;(format t "début code note *cur-n*=~S ~%" *cur-n*)
-  ;;(format t "début code note *premier*=~S ~%" *premier*)
-  ;;(format t "début code note *dernier*=~S ~%" *dernier*)
-  ;;(format t "début code note *vrai-dernier*=~S ~%" *vrai-dernier*)
-  ;;(format t "début code note *end-mesure*=~S ~%" *end-mesure*)
-  ;;(format t "début code note *pos-cour*=~S ~%" *pos-cour*)
+  ;;(format t "dbut code note articulation=~S ~%" articulation)
+  ;;(format t "dbut code note *liste-note*=~S ~%" *liste-note*)
+  ;;(format t "dbut code note *cur-pos*=~S ~%" *cur-pos*)
+  ;;(format t "~%dbut code note *total-des-pos*=~S ~%" *total-des-pos*)
+  ;;(format t "dbut code note *num-canal-mesure*=~S ~%" *num-canal-mesure*)
+  ;;(format t "dbut code note vrai-dur=~S ~%" vrai-dur)
+  ;;(format t "dbut code note dur-symb=~S ~%" dur-symb)
+  ;;(format t "dbut code note *long-mes*=~S ~%" *long-mes*)
+  ;;(format t "dbut code note *cur-n*=~S ~%" *cur-n*)
+  ;;(format t "dbut code note *premier*=~S ~%" *premier*)
+  ;;(format t "dbut code note *dernier*=~S ~%" *dernier*)
+  ;;(format t "dbut code note *vrai-dernier*=~S ~%" *vrai-dernier*)
+  ;;(format t "dbut code note *end-mesure*=~S ~%" *end-mesure*)
+  ;;(format t "dbut code note *pos-cour*=~S ~%" *pos-cour*)
   ;;(format t "dans code note *silence*=~S ~%" *silence*)
   ;;(format t "dans code note special=~S ~%" special)
   ;;(format t "dans code note *1-en-cours*=~S ~%" *1-en-cours*)
   ;;(format t "dans code note *n-uplet-1*=~S ~%" *n-uplet-1*)
   ;;(format t "dans code note *n-uplet-2*=~S ~%" *n-uplet-2*) 
   ;;(format t "dans code note haut=~S ~%" haut)
+  ;;(format t "dans code note expression=~S ~%" expression)
+  ;;(format t "dans code note pgchange=~S ~%" pgchange)
+  ;;(format t "dans code note expressionlayer=~S ~%" expressionlayer)
   
   (if (not (= 0 vrai-dur))
     (progn
       (setq *cur-pos* (mod (+ *cur-pos* 0) *long-mes*))  ;; rajout le 18 12 2000
       (setq *end-mesure* nil)
       (next-note)
-      (code-debut-note dur-symb haut special expression pgchange)
+      (code-debut-note dur-symb haut special expression expressionlayer articulation pgchange)
       (unless *silence*  
         (code-suite-note liaisag liaisad haut special vel 1)) 
       (next-pos vrai-dur special)
       (when (end-mesure?) (next-mesure version)))
-    (format t "dans code-note note événement de durée nulle ~%" )))
+    (format t "dans code-note note vnement de dure nulle ~%" )))
   
 (defun staccato (x)
   (if (= (car x) 254) t nil))    ; (car x) au lieu de x le 27 08 01: t si la note est staccato, nil sinon
 
 (defun glissando? (x)
-  (if (= (car x) 253) t nil))   ; le 28 08 01: t si la note est glissé, nil sinon
+  (if (= (car x) 253) t nil))   ; le 28 08 01: t si la note est gliss, nil sinon
 
 (defun micro? (x)
        (if x
   (let ((h (car x)))
-      (not (= (round h) h))) nil))   ; le 31 08 01: t si la hauteur n'est pas entière (micro-interval),  nil sinon
+      (not (= (round h) h))) nil))   ; le 31 08 01: t si la hauteur n'est pas entire (micro-interval),  nil sinon
 
 
 (defun xor (a b)
   (or (and a (not b)) (and (not a) b)))
 
 
-(defun aticulation? (x)     ; retourne t si la note est doté d'au moins une articulation  01 09 01
+(defun articulation? (x)     ; retourne t si la note est dot d'au moins une articulation  01 09 01
   (entre x 100 254))
 
 
-;; il faut décomposer les notes d'une durée sup à la palette de note de finale
+;; il faut dcomposer les notes d'une dure sup  la palette de note de finale
 
 
-(defun code-debut-note (dur-symb haut special expression pgchange)
-  ;(format t "début code-début-note -------------------------------dur-symb=~S haut=~S ~%" dur-symb haut)
-  ;;(format t "début code-début-note -------------------------------*n-uplet-1*=~S *n-uplet-2*=~S ~%" *n-uplet-1* *n-uplet-2*)
-  ;;(format t "début code-début-note -------------------------------*precedent*=~S *suivant*=~S ~%" *precedent* *suivant*)
-  ;;(format t "début code-début-note -------------------------------*total1*=~S ~%" *total1*)
-  ;;(format t "début code-début-note -------------------------------*limite1*=~S ~%" *limite1*)
+(defun code-debut-note (dur-symb haut special expression expressionlayer articulation pgchange)
+  ;;(format t "dbut code-dbut-note -------------------------------special=~S ~%" special)
+  ;(format t "dbut code-dbut-note -------------------------------articulation=~S *cur-n*=~S ~%" articulation *cur-n*)
+  ;;(format t "dbut code-dbut-note -------------------------------dur-symb=~S haut=~S ~%" dur-symb haut)
+  ;;(format t "dbut code-dbut-note -------------------------------*n-uplet-1*=~S *n-uplet-2*=~S ~%" *n-uplet-1* *n-uplet-2*)
+  ;;(format t "dbut code-dbut-note -------------------------------*precedent*=~S *suivant*=~S ~%" *precedent* *suivant*)
+  ;;(format t "dbut code-dbut-note -------------------------------*total1*=~S ~%" *total1*)
+  ;;(format t "dbut code-dbut-note -------------------------------*limite1*=~S ~%" *limite1*)
+  ;; (format t "dbut code-dbut-note -------------------------------expressionlayer=~S haut=~S ~%" expressionlayer haut)
+  ;;(format t "dbut code-dbut-note -------------------------------expression=~S ~%" expression)
+  ;;(format t "dbut code-dbut-note -------------------------------pgchange=~S ~%" pgchange)
+
 
   (let ((cinquieme 0))
     (setq cinquieme (format nil "$C0~S~S0~S0~S"
                             (cond
-                             ((gracenote? special) 8)
-                             ((micro? haut) 6)                           ; tête carrée avec forcement l'articulation + ou -
-                              ((aticulation? special) 2)                  ;présence d'une articulation
+                             ;((gracenote? special) 8)
+                             ((and (gracenote? special) articulation) 'A)
+                             ((and (gracenote? special) (not articulation)) 8)
+                             ((micro? haut) 6)                           ; tte carre avec forcement l'articulation + ou -
+                              ((or (articulation? special) articulation) 2)                  ;prsence d'une articulation de special (staccato) ou d'une articulation du 11 me champ (accent ...)
                              (t 0))
-                            (if (or *n-uplet-1* *n-uplet-2*) 8 0)             ;début d'un n-uplet1
+                            (if (or *n-uplet-1* *n-uplet-2*) 8 0)             ;dbut d'un n-uplet1
                             (if (or (entre special 2 99) (not (fin-n-uplet1 *total1* *limite1*))) 0 8)  ;note sous n-uplet1 ou 2eme grace note et suivante (liaison)
                             (if (gracenote? special) 1 0) 
                             ))
@@ -1656,22 +1822,24 @@
                                         (*n-uplet-2* '$81080000)
                                         (t '$81000800))
                                        cinquieme)
-                                     (if (or expression pgchange) 129 128)          ;; 19 10 01 pour coder les "text expression"
+                                     (if (or expression pgchange expressionlayer) 129 128)          ;; 19 10 01 pour coder les "text expression" ****** rajout "expressionlayer"  11-04-2012
                                      (if *silence* 0 (length haut)))
                              *liste-note*))
-  (if (staccato special) (code-staccato *cur-n*))
-  (if (glissando? special) (code-glissando *cur-n*))
+  ;(if (staccato special) (code-staccato *cur-n*)) -------> le codage est à présent réalisé en amont par autre-articulion dans noteliste (et par code-articulation)
+ ; (if (glissando? special) (code-glissando *cur-n*)) -------> le codage est à présent réalisé en amont par autre-articulion dans noteliste (et par code-articulation)
   (if (micro? haut) (code-micro-interval haut *cur-n* dur-symb))
   (if expression (code-expression *cur-n* expression))
-  (if pgchange (code-expression *cur-n* pgchange))))
+  (if expressionlayer (code-expression *cur-n* expressionlayer))
+  (if pgchange (code-expression *cur-n* pgchange))
+  (if articulation (code-articulation *cur-n* articulation))))  ;; rajout de Mai 2010 pour coder le 11 me champ (marques d'articulation
 
 
-;; *n-uplet-1* si la note est le début d'un premier n-uplet
-;; *n-uplet-2* si la note est le début d'un second n-uplet interne au premier
+;; *n-uplet-1* si la note est le dbut d'un premier n-uplet
+;; *n-uplet-2* si la note est le dbut d'un second n-uplet interne au premier
 
 
 (defun code-suite-note (liaisag liaisad haut special vel n)
-  ;(format t "début code-suite-note ---liaisag=~S liaisad=~S special=~S haut=~S *silence*=~S ~%" liaisag liaisad special haut *silence*)
+  ;(format t "dbut code-suite-note ---liaisag=~S liaisad=~S special=~S haut=~S *silence*=~S ~%" liaisag liaisad special haut *silence*)
   (when (not(null haut))
     (let ((code-hauteur (unless *silence* (calc-hauteur (round (car haut))))))   ; 31 08 01
       (setq *liste-note*  (cons  (format nil "    ~S $~S~S0~S0000 " 
@@ -1688,8 +1856,8 @@
 
 ;; remarque du 04 09 01
 ;; *silence* est toujours NIL dans cette fonction, car on y passe que pour les vraies notes
-;; aussi le (not *silence*) qui suit ne sert à rien
-;; toutefois il se trouve qu'un bug? fait passer par cette fonction des silences: à corriger !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;; aussi le (not *silence*) qui suit ne sert  rien
+;; toutefois il se trouve qu'un bug? fait passer par cette fonction des silences:  corriger !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       ;(if (and (not (gracenote? special)) (not *silence*) (not (equal haut '(20))))  ce n'est pas une solution!!
         (if (and (not (gracenote? special)) (not *silence*))
@@ -1754,7 +1922,7 @@
 (defun sign (n) (if (< n 0) t nil))
                    
 ;; ------------------------------------------------------------------------------
-;; calcule la duree effective à coder
+;; calcule la duree effective  coder
 ;; ------------------------------------------------------------------------------
 
 (defun get-dur (dur)
@@ -1918,7 +2086,7 @@
           (tab (cdr l) ta))) ta)
 
 ;; ---------------- version 2001 --------------------------------
-(defun code-GF01 (l) ;(print (list "code-GF" l));; code dans *lprov-GF* la sous-liste des GF correspondant à un canal de 1 ou plusieurs layers
+(defun code-GF01 (l) ;(print (list "code-GF" l));; code dans *lprov-GF* la sous-liste des GF correspondant  un canal de 1 ou plusieurs layers
   (if l
     (let* ((a (first l))
            (b (extraitl01 a l))
@@ -1937,9 +2105,9 @@
 ;; ---------------- version FINALE2004 --------------------------------
 
 
-;; tableau reçoit une liste de liste de type ((num_layer ref_FR) ...)
+;; tableau reoit une liste de liste de type ((num_layer ref_FR) ...)
 ;; tablau retourne une table de 4. Rang 1 pour layer 1, rang 2 pour layer 2 ...
-;; La valeur portée dans le tableau est l'indice (dans FR()) du "staff-mesure-layer" correspondant
+;; La valeur porte dans le tableau est l'indice (dans FR()) du "staff-mesure-layer" correspondant
 
 (defun tableau (l &optional (ta (make-array 4)))
   (if l 
@@ -1950,7 +2118,7 @@
        ; (progn (setf (aref ta (1- layer)) (1+ ref))
                (progn (setf (aref ta (1- layer)) ref)
                (tableau (cdr l) ta))
-        (format t "ERREUR dans TABLEAU --- N° de Layer=~S supérieur à 4~%" layer)))
+        (format t "ERREUR dans TABLEAU --- N de Layer=~S suprieur  4~%" layer)))
     ta))
 
 ; (tableau '((1 7) (4 1))) --> #(8 0 0 2)
@@ -2009,7 +2177,7 @@
 
 (defun nump (v &optional (n 1)) 
   (let ((vn (* v n)))
-    (cond ((or (< vn 1) (> vn 5)) 0)     ;; 5 = maximum admis du numérateur principal de time-signature
+    (cond ((or (< vn 1) (> vn 5)) 0)     ;; 5 = maximum admis du numrateur principal de time-signature
           ((and (>= vn 3) (<= vn 5)) vn)
           (t (nump v (1+ n))))))
 
@@ -2076,7 +2244,7 @@
                       (cons (format nil "^MS(~S) 360 0 ~S ~S 198 16" (+ i 1) (+ 3 i) (+ 3 i))  *liste-decription-mesures*)))
           (let ((a1 (denppal lm)) (a2 (densecond lm)) (b1 (numppal lm)) (b2 (numsecond lm)))
             (cond
-             ((= lm 5/2) (setq a1 1024) (setq a2 512) (setq b1 2) (setq b2 1)))    ; cas particulier de durée 3/2 --> code 3/8
+             ((= lm 5/2) (setq a1 1024) (setq a2 512) (setq b1 2) (setq b2 1)))    ; cas particulier de dure 3/2 --> code 3/8
             
             (setq *liste-des-TL*
                   (cons (format nil "^TL(~S) ~S 1 ~S 1 0 0" (+ 3 i) a1 a2) *liste-des-TL*))
@@ -2104,7 +2272,7 @@
     (let ((lm (car l)))
       (cond
        
-       ((or (integerp lm) (< lm 1))                                      ;cas des mesures entières ou < 1noire                    
+       ((or (integerp lm) (< lm 1))                                      ;cas des mesures entires ou < 1noire                    
         (setq *liste-decription-mesures*
               (cons (format nil "^MS(~S) 4 1024 240 0 0 0 " i) 
                     (cons (format nil "^MS(~S) 360 0 ~S ~S 6 16 " i (numerator lm) (/ 1024 (denominator lm))) 
@@ -2154,16 +2322,16 @@
 
 
 ;; ------------------------------------------------------------------------------
-;; écriture du fichier ENIGMA
+;; criture du fichier ENIGMA
 ;; ------------------------------------------------------------------------------
 
-;(defparameter *enigma-dir* "ccl:enigma includes;")                    ; directory où on sauve
-;(defparameter *enigma-include-dir01* "ccl:enigma includes;D2001;")    ; directory où on lit (version 2001)
-;(defparameter *enigma-include-dir04* "ccl:enigma includes;D2004;")    ; directory où on lit (version 2001)
+;(defparameter *enigma-dir* "ccl:enigma includes;")                    ; directory o on sauve
+;(defparameter *enigma-include-dir01* "ccl:enigma includes;D2001;")    ; directory o on lit (version 2001)
+;(defparameter *enigma-include-dir04* "ccl:enigma includes;D2004;")    ; directory o on lit (version 2001)
 
 (defparameter *enigma-dir* (make-pathname :directory (append (butlast (pathname-directory (LISP-IMAGE-NAME)) 3) '("enigma includes"))))
-(defparameter *enigma-include-dir01* (make-pathname :directory (append (butlast (pathname-directory (LISP-IMAGE-NAME)) 3) '( "enigma\ includes/D2001"))))    ; directory où on lit (version 2001)
-(defparameter *enigma-include-dir04* (make-pathname :directory (append (butlast (pathname-directory (LISP-IMAGE-NAME)) 3) '( "enigma\ includes/D2004"))))   ; directory où on lit (version 2004)
+(defparameter *enigma-include-dir01* (make-pathname :directory (append (butlast (pathname-directory (LISP-IMAGE-NAME)) 3) '( "enigma\ includes/D2001"))))    ; directory o on lit (version 2001)
+(defparameter *enigma-include-dir04* (make-pathname :directory (append (butlast (pathname-directory (LISP-IMAGE-NAME)) 3) '( "enigma\ includes/D2004"))))   ; directory o on lit (version 2004)
 
 
 (defun incorporate-file-01 (dst-stream src-filename)
@@ -2194,7 +2362,7 @@
     (incorporate-file-01 dst-stream "fich2")
     (incorporate-list dst-stream (reverse *liste-de-portee-clef*))
     (incorporate-file-01 dst-stream "fich3")
-    (incorporate-list dst-stream (reverse *liste-position-portee*))   ;;modifié le 15 mai 2001 (finale 2001d)
+    (incorporate-list dst-stream (reverse *liste-position-portee*))   ;;modifi le 15 mai 2001 (finale 2001d)
     (incorporate-file-01 dst-stream "fich3bis")
     (incorporate-list dst-stream (reverse *liste-decription-mesures*))
     (incorporate-file-01 dst-stream "fich4")
@@ -2207,12 +2375,12 @@
     (incorporate-file-01 dst-stream "fich6")
     (incorporate-list dst-stream (reverse *liste-des-expressions*))   ;;code expressions  19 10 01
     (incorporate-list dst-stream (reverse *liste-des-GF*))
-    (incorporate-file-01 dst-stream "fich6bis")                  ;;rajouté le 15 mai 2001 (finale 2001d)
+    (incorporate-file-01 dst-stream "fich6bis")                  ;;rajout le 15 mai 2001 (finale 2001d)
     (incorporate-list dst-stream (reverse *liste-des-IM*))
     ;(incorporate-list dst-stream (reverse *liste-crochet*))
     (incorporate-list dst-stream *liste-nuplet*)
     (incorporate-list dst-stream (reverse *liste-des-veloc*))
-    (incorporate-list dst-stream (reverse *liste-des-tete*)) ;; 31 08 01 liste des formes de tête de note
+    (incorporate-list dst-stream (reverse *liste-des-tete*)) ;; 31 08 01 liste des formes de tte de note
     (incorporate-file-01 dst-stream "fich7")
     (incorporate-list dst-stream (reverse *liste-note*))
     (incorporate-file-01 dst-stream "fich8")
@@ -2231,13 +2399,13 @@
                               :direction :output 
                               :if-exists :supersede)
     (incorporate-file-04 dst-stream "fich1-04")
-    (incorporate-list dst-stream (code-BC (length *liste-barres-mesures*)))  ;; ajout le 22 03 05 pour FINALE2005 (codage comlémentaire des mesures)
+    (incorporate-list dst-stream (code-BC (length *liste-barres-mesures*)))  ;; ajout le 22 03 05 pour FINALE2005 (codage comlmentaire des mesures)
     (incorporate-file-04 dst-stream "fich1bis-04")
     (incorporate-list dst-stream (reverse *liste-mesures*))
     (incorporate-file-04 dst-stream "fich2-04")
     (incorporate-list dst-stream (reverse *liste-de-portee-clef*))
     (incorporate-file-04 dst-stream "fich3-04")
-    (incorporate-list dst-stream (reverse *liste-position-portee*))   ;;modifié le 15 mai 2001 (finale 2001d)
+    (incorporate-list dst-stream (reverse *liste-position-portee*))   ;;modifi le 15 mai 2001 (finale 2001d)
     (incorporate-file-04 dst-stream "fich3bis-04")
     (incorporate-list dst-stream (reverse *liste-decription-mesures*))
     (incorporate-file-04 dst-stream "fich4-04")
@@ -2252,12 +2420,12 @@
     (incorporate-file-04 dst-stream "fich6-04")
     (incorporate-list dst-stream (reverse *liste-des-expressions*))   ;;code expressions  19 10 01
     (incorporate-list dst-stream (reverse *liste-des-GF*))
-    (incorporate-file-04 dst-stream "fich6bis-04")                  ;;rajouté le 15 mai 2001 (finale 2001d)
+    (incorporate-file-04 dst-stream "fich6bis-04")                  ;;rajout le 15 mai 2001 (finale 2001d)
     (incorporate-list dst-stream (reverse *liste-des-IM*))
     ;(incorporate-list dst-stream (reverse *liste-crochet*))
     (incorporate-list dst-stream *liste-nuplet*)
     (incorporate-list dst-stream (reverse *liste-des-veloc*))
-    (incorporate-list dst-stream (reverse *liste-des-tete*)) ;; 31 08 01 liste des formes de tête de note
+    (incorporate-list dst-stream (reverse *liste-des-tete*)) ;; 31 08 01 liste des formes de tte de note
     (incorporate-file-04 dst-stream "fich7-04")
     (incorporate-list dst-stream (reverse *liste-note*))
     (incorporate-file-04 dst-stream "fich8-04")
@@ -2266,7 +2434,7 @@
 
 
 ;; ------------------------------------------------------------------------------
-;; sauver le fichier prepa de concaténantion des listes (ne sert plus)
+;; sauver le fichier prepa de concatnantion des listes (ne sert plus)
 ;; ------------------------------------------------------------------------------
 
 #|
@@ -2279,7 +2447,7 @@
 |#
 
 ;; ------------------------------------------------------------------------------
-;; lancer l'écriture
+;; lancer l'criture
 ;; ------------------------------------------------------------------------------
 
 ;; Modif Mai 2001 (voir intro)

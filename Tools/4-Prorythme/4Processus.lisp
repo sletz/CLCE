@@ -8,7 +8,11 @@
 ;;                     Ajout du paramètre optionnel pgchange dans prorythme le 25 10 01
 ;;                     Ajout du paramètre optionnel layer dans gnotes le 11 11 01   
 ;;                     Ajout du paramètre optionnel "controleur" le 27 Février 2005 dans gnotes         
-;;                     Ajout de modegliss le 4 mai 2007         
+;;                     Ajout de modegliss le 4 mai 2007      
+;;                     Ajout du key paramètre CONTROL-CHGE de GNOTES et N_GNOTES le 30 Septembre 2011    
+;;                     Ajout du key parametre LLAYERSYNTHE de GNOTES et N_GNOTES le Avril 2012  
+;;                     Ajout du key parametre LACCELERANDO de GNOTES et N_GNOTES le Mai 2012, modifié novembre 2012 
+;;                     Modification de n-evenement en septembre 2012
 ;;==============================================================================
 
 
@@ -71,7 +75,9 @@
 ;;                    (ltextexpres °nil)
 ;;                    (larpege °nil) (arpegecar °0)
 ;;                    (layer °1)
-;;                    (lcontrol °nil))
+;;                    (lcontrol °nil)
+;;                    (lcontrol-chge °nil) 
+;;                    (llayersynthe °nil)) 
 
 ;; Tous les paramètres sont des générateurs.
 
@@ -172,6 +178,40 @@
 ;; Pour l'évaluation des générateurs, le découpage par TRILLE ou MOTIF n'est pas pris en compte
 ;; ex: :lcontrol °(°7 (floo(i °0 °127)) °1) --> contoleur de volume variant pour chaque note de 0 à 127 par pas minimum de 1.
 
+;; lcontrol-chge (numcontroleur, v1, v2 n1, n2) place le controleur de n° numcontroleur avec la valeur v1 puis n1 notes après
+;; place le controleur de n° numcontroleur avec la valeur v2, puis n2 notes après replace la valeur v1 etc ...
+;; les intervalles éventuels entre les occurences rythmiques ne comptent pas comme des notes.
+;; Un usage typique de cette fonctionnalité est l'usage de la pédale: °(64 127 0 4 2) : pédale abaissée pendant 4 notes, relevée pendant 2 notes
+
+
+;; llayersynthe: liste de liste (hauteur, n°d'expression finale) permet de basculer d'un layer à l'autre à l'intérieur d'un instrumet "machfive" 
+;; et d'écrire le nom du layer correspondant dans la partition finale
+;; typiquement un instrument "violon piz" de "machfive" peut comporter les 3 layers suivants:
+;; "normal" commandé par do2 (48)
+;; "sec" commandé par do#2 (49)
+;; "bartok" commandé par ré2 (50)
+;; dans ces conditions :llayersynthe °((50 47)) la note de hauteur 50 fera basculer le violon en mode "bartok" 
+;; et écrira "piz bartok" dans la partition finale (47 est le n° de l'expression "piz bartok" dans finale)
+;; Ce paramètre s'applique même aux accords multicanaux suivant la valeur de "chan" et de "laccord". Exemples
+;; chan=10 et :laccord °(1 1 8) :llayersynthe °((60 36) (72 45)) -->(60 36) s'applique au canal 11 et (72 45) au canal 18
+;; chan=10 et :laccord °(1 1 8) :llayersynthe °((60 36)) -->(60 36) s'applique au canal 11 et rien n'est appliqué au canal 18
+;; chan=10 et :laccord °(1 1 8) :llayersynthe °(nil (72 45)) -->rien ne s'applique au canal 11 et (72 45) est appliqué au canal 18
+;; la liste de :llayersynthe est appliquée terme à terme à la liste :laccord expurgé des doublons (ici: (1 8)) 
+;; si :laccord °(8 1 8 8 1) alors la liste de :llayersynthe est appliquée à (8 1)
+;; le terme layer utilisé ici n'a rien à voir avec le concept layer de finale.
+
+;; laccelerando: permet de générer un accelerando ou un ritardo avec écriture d'un symbole dans FINALE
+;; exemple: °(1/8 1 -1 (floo (i °0 °12)) 120))
+;; decrescendo de la triple croche (1/8) à la noire (1/8) pendant la durée de la note fournie par PRORYTHME
+;; le troisième paramètre indique crescendo si positif, decrescendo si négatif, volume égal si 0
+;; le quatrième paramètre donne les écarts en hauteur relativement à la note de base fournie par PRORYTHME
+;; le cinquième paramètre indique la présence d'un accent sur la première note de l'accelerando (ici une vélocité de 120)
+;; pour ne pas avoir d'accent il faut écrire un accent de valeur 0.
+;; accelerando, crescendo (ou decrescendo) et accent sont notés par des symboles dans la partition FINALE
+;; si il y a présence de grace note à l'attaque, ces dernières seront aussi accentuées le cas échéant
+;; ATTENTION: tous les paramètres sont des nombres sauf le 4-ème (écarts de hauteur) qui est un générateur
+;; ajout de Mai 2012 modifié novembre 2012
+
 
 #|
  Staccato aléatoire avec trille à la triple croche
@@ -212,7 +252,12 @@
               (rnd °36 °84)
               °100)
 |#
-;;=================================================================
+
+
+
+
+;;================================================================= 9 septembre 2011 introduction du key parametre control-chge dans gnotes -------->
+
 
 
 (defun gnotes (&key (sil °0) 
@@ -227,12 +272,35 @@
                     (ltextexpres °nil)
                     (larpege °nil) (arpegecar °0)
                     (layer °1)
-                    (lcontrol °nil))
-  (g (evenement sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer lcontrol)))
+                    (lcontrol °nil)
+                    (lcontrol-chge °nil)  ;; ajout le 11 septembre 2011. Permet l'écriture de controleurs à deux valeurs comme les pédales  (exemple: eighth)
+                    (llayersynthe °nil)  ;; ajout le 9 avril 2012. Permet le changement de layer d'un echantilloneur (machfive2) avec écriture de l'instrument dans finale  
+                                            ;(exemple: :llayersynthe °((60 37) (64 42)) 
+                    (laccelerando °nil) (ehaccelerando °nil))  ;; exemple :laccelerando °(1/8 1 -1 (floo (i °0 °12)) 120)) ajout de Mai 2012, modifié novembre 2012
+                
+  
+  (g (evenement sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer lcontrol lcontrol-chge llayersynthe laccelerando ehaccelerando)))
 
+#|
+;;=======================================================
 
+;; exemple typique, controleur 64 = pédale de piano
+;; la pédale est enfoncée pendant deux notes, relevée pendant une note
+;; l'intervalle °1 entre les occurences du rythme n'est^pas compté comme une note
 
+(defun exemple ()  
+  (place-tempo 0 90)
+  ( prorythme °0 °0 °16
+              (gnotes)
+              °1
+              ;°(1)
+             °(2/3n(1 1 1) + 1)
+               (s °(60 61 62 63 64 65 66 67 68 69 70))
+              °120
+              °nil
+              :controle-chge °(64 127 0 2 1)))
 
+;;=======================================================
 
 ; 02 03 05 Partout dans evenement --> modif de vel en §vel (cf sequence) (sauf vel=0 pour proba=0) 
 ; 02 03 05 Partout dans evenement --> modif de chan en §chan (cf sequence) (sauf chan=0 pour proba=0)
@@ -249,6 +317,94 @@
                            §ldurgliss §lhautgliss §lapog §ltransp §ltextexpres §larpege §arpegecar §layer §lcontrol))))
         (accord ctime §chan pgchange dur §haut §vel §sil §stac §tril §ecar §laccord §lecar §lmaxaccord §lmotifhaut
                 §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol))))
+|#
+
+
+
+#|
+;; modifs le 30septembre 2011 pour introduire les controleurs dans gnotes
+
+
+(defun chgtlast (l a1)
+ (reverse(cons a1 (cdr(reverse l)))))
+
+(defun chgt-elements (l a1 a2 a3)
+  (chgtlast (append (list a1 a2) (cddr l)) a3))
+
+;(chgt-elements '(1 2 3 4) 40 50 60) --> (40 50 3 60)
+|#
+
+
+
+(defun evenement (sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres larpege arpegecar layer lcontrol lcontrol-chge llayersynthe laccelerando ecar-accelerando) 
+  
+  #'(lambda (chan dur haut vel pgchange stime ctime etime reverse) ;; le 22 10 01 introduction des pgchg
+
+      (let* ((canal §chan)
+             (lac §laccord)
+             (ctrlchge §lcontrol-chge)
+             (etat-ctrl-chge (aref *etat-ctrl-chge2* canal)))
+ 
+ 
+        (if dur
+            (progn
+   
+              (if ctrlchge
+                  (if etat-ctrl-chge
+                      (let ((vn (first etat-ctrl-chge))
+                            (nbre (second etat-ctrl-chge))
+                            (pedale (third etat-ctrl-chge))
+                            (val 0))
+                        (if (>= vn nbre)
+                            (progn
+                              (if pedale
+                                  (progn
+                                    (setq val (second ctrlchge))
+                                    (setq nbre (fourth ctrlchge)))
+                                (progn
+                                  (setq val (third ctrlchge))
+                                  (setq nbre (fifth ctrlchge))))
+                              (setq pedale (not pedale))
+                              (make-controle-chge canal lac val (first ctrlchge))
+                              (setf (aref *etat-ctrl-chge2* canal) (list 1 nbre pedale)))
+
+                          (setf (aref *etat-ctrl-chge2* canal) (list (+ 1 vn) nbre pedale))))
+
+
+                    (progn
+                      (make-controle-chge canal lac (second ctrlchge) (first ctrlchge))
+                      (setf (aref *etat-ctrl-chge2* canal) (list 1 (fourth ctrlchge) nil))))
+
+
+                (progn
+                  (if (aref *etat-ctrl-chge2* canal)
+                      (make-controle-chge canal lac (third ctrlchge) (first ctrlchge)))
+                  (setf (aref *etat-ctrl-chge2* canal) nil)))
+
+
+
+                  (let*  ((p §proba)
+                         (llacelerando §laccelerando)
+                         (mode (if llacelerando (fifth llacelerando)
+                                 nil))
+                         (ecar-h-acceler (if mode §ecar-accelerando     ; évaluation avec temps global (décembre 2012)
+                                           ecar-accelerando)))          ; évaluation ultérieure avec temps local (décembre 2012)
+
+
+
+              (if (> (SPECIAL-EVALUATE dur) 0)   ; 30 08 01
+
+   
+                    (cond ((= p -1) (accord ctime canal pgchange (changder dur) §haut §vel §sil §stac §tril   
+                                            §ecar §laccord §lecar §lmaxaccord §lmotifhaut §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol §llayersynthe llacelerando ecar-h-acceler))
+                          ((= p 0) (accord ctime canal pgchange (changder dur) 10 0 §sil §stac §tril
+                                           §ecar §laccord §lecar §lmaxaccord §lmotifhaut §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol §llayersynthe llacelerando ecar-h-acceler))
+                          (t (accord ctime canal pgchange dur §haut §vel §sil §stac §tril §ecar §laccord §lecar §lmaxaccord §lmotifhaut
+                                     §ldurgliss §lhautgliss §lapog §ltransp §ltextexpres §larpege §arpegecar §layer §lcontrol §llayersynthe llacelerando ecar-h-acceler)))
+
+
+                (accord ctime canal pgchange dur §haut §vel §sil §stac §tril §ecar §laccord §lecar §lmaxaccord §lmotifhaut
+                        §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol §llayersynthe llacelerando ecar-h-acceler))))))))
 
 
 
@@ -331,7 +487,7 @@ prefixplus, code le rythme en notation préfixée
                                distribution-hauteurs
                                distribution-velocites 
                                &optional (pgchange °nil))
-|#
+
 ;; ensemble d'objets définis sur le canal délivrées par le générateur SPECIAL-CHAN
 ;; entre les dates t1 et t2 délivrées par les générateurs DEBPRO et FINPRO.
 ;; OBJET: Générateur d'objets musicaux
@@ -362,7 +518,7 @@ prefixplus, code le rythme en notation préfixée
 ;; un message d'alerte est envoyé mais les calculs ne sont pas arrêtés.
 
 ;; pgchange s'applique toujours à la structure de base du prorythme indépendament des optionnelles de gnotes
-#|
+
  exemples:
 
 (prorythme °0 °0 °10
@@ -402,6 +558,9 @@ prefixplus, code le rythme en notation préfixée
   (if (null l) nil
       (cons (car l) (ote-double (delete (car l) l)))))
 
+
+
+#|
 ;;=======================================================
 ;; special-chan intègre chan et port:
 ;; si special-chan=18 alors port=1 et chan=2
@@ -427,6 +586,40 @@ prefixplus, code le rythme en notation préfixée
             pgchange
             (date?) stime etime nil))
   (format t "~%**********  fin de prorythme à la date ~S ~%" (/ (date?) noi)))
+|#
+
+
+;;======================================================= 
+
+;; special-chan intègre chan et port:
+;; si special-chan=18 alors port=1 et chan=2
+
+(defun prorythme (special-chan debpro finpro
+                               objet
+                               interval
+                               distribution-rythme-symb
+                               distribution-hauteurs
+                               distribution-velocites 
+                               &optional (pgchange °nil))   
+  (let* ((stime (floor (* (funcall debpro 0 0 1 nil) noi)))
+         (etime (floor (* (funcall finpro 0 1 1 nil) noi))))
+
+
+
+
+    (p-abs stime) 
+    (proryt special-chan
+            objet
+            interval
+            distribution-rythme-symb
+            distribution-hauteurs
+            distribution-velocites
+            pgchange
+            (date?) stime etime nil))
+  (format t "~%**********  fin de prorythme à la date ~S ~%" (/ (date?) noi)))
+
+
+
 
 
 ;;=======================================================
@@ -438,19 +631,19 @@ prefixplus, code le rythme en notation préfixée
                hauteur 
                velocite
                pgchange
-               ctime stime etime reverse)
+               ctime stime etime reverse) 
   (if (< ctime etime) 
-  (let* ((rs §rythme-symb)
-         (rythm-symb (prefixplus (code-rythme rs)))
-         (dat (+ ctime (* noi (dur-midi rythm-symb))))
-         (inter §interval))
+      (let* ((rs §rythme-symb)
+             (rythm-symb (prefixplus (code-rythme rs)))
+             (dat (+ ctime (* noi (dur-midi rythm-symb))))
+             (inter §interval))
     ;(format t "PROCESSUS rythme=~S ~%" rythm-symb)
-    (when  ( <= dat etime)
-      ;;(format t "PROCESSUS dat~S ~%" (floor (/ dat noi)))
-      ;;(format t "PROCESSUS rythme-non-decodé=~S ~%" rs)
-      (paj-sequence chan objet rythm-symb hauteur velocite pgchange ctime stime etime reverse)
-      (p-rel (* noi (abs inter)))
-      (proryt chan objet interval rythme-symb hauteur velocite pgchange (date?) stime etime reverse )))))
+        (when  ( <= dat etime)
+          ;;(format t "PROCESSUS dat~S ~%" (floor (/ dat noi)))
+          ;;(format t "PROCESSUS rythme-non-decodé=~S ~%" rs)
+          (paj-sequence chan objet rythm-symb hauteur velocite pgchange ctime stime etime reverse)
+          (p-rel (* noi (abs inter)))
+          (proryt chan objet interval rythme-symb hauteur velocite pgchange (date?) stime etime reverse )))))
 
 
 ;;=======================================================
@@ -459,22 +652,21 @@ prefixplus, code le rythme en notation préfixée
 
 
 (defun paj-sequence (cha objet rythm-symb haut vel pgchange ctime stime etime reverse)
-  ;(print (list "sequence" (/ (date?) noi) rythm-symb))
+  
   (when rythm-symb
+    ;(print (list "paj-sequence date rythm-symb: " (/ (date?) noi) rythm-symb))
     (let ((ryt-symb (list (first rythm-symb))))
       ;(format t "dans sequence  haut=~S date=~S rythme=~S~%" haut (/ (date?) noi) ryt-symb)
       (let (
             (pgchg §pgchange))
         (if ( > (SPECIAL-EVALUATE (first ryt-symb)) 0)     ; 30 08 01
-          (funcall §objet  cha (first ryt-symb) haut vel pgchg stime ctime etime reverse)   ;change §vel en vel 02 03 05, supprime (let ((canal §cha))
-          (funcall §objet  cha (first ryt-symb) °20 0 pgchg stime ctime etime reverse)))
+            (funcall §objet  cha (first ryt-symb) haut vel pgchg stime ctime etime reverse)   ;change §vel en vel 02 03 05, supprime (let ((canal §cha))
+          (funcall §objet  cha (first ryt-symb) °20 °0 pgchg stime ctime etime reverse)))
       (paj-sequence cha objet (cdr rythm-symb) haut vel pgchange (date?) stime etime reverse))))
 
 
 
-(defun ote-double (l)
-  (if (null l) nil
-      (cons (car l) (ote-double (delete (car l) l)))))
+
 
 
 
@@ -509,11 +701,11 @@ prefixplus, code le rythme en notation préfixée
 #| EX:
  ( n-prorythme °0 °20 (h °(0 1/4))
       (n-gnotes °0 °(4) (h °(72 67 66 73)) °90))
-|#
+
 ;;==============================================================================
 
 
-
+|#
 
 (defun n-prorythme ( debpro finpro interval objet)
   (let* ((stime (floor (* (funcall debpro 0 0 1 nil) noi)))
@@ -531,15 +723,19 @@ prefixplus, code le rythme en notation préfixée
 ;; nouveau au 09 02 2001
 (defun new-proryt (  objet 
                      interval 
-                     ctime stime etime reverse )
-  (let ((inter §interval))
+                     ctime stime etime reverse ) 
+  (let ((inter §interval)) 
     (when  ( < ctime etime)
       ;(format t "~%*************  new-proryt à ~S ~%" (/ (date?) noi))
       §objet  
       (if (<= (+ (date?) (* noi (abs inter))) etime) 
-        (progn
-          (p-rel (* noi (abs inter))) ;(print (list ctime (date?)))
-          (new-proryt objet interval (date?) stime etime reverse ))))))
+          (progn
+            (p-rel (* noi (abs inter))) ;(print (list ctime (date?)))
+            (new-proryt objet interval (date?) stime etime reverse ))))))
+
+
+
+
 
 
 
@@ -566,51 +762,33 @@ prefixplus, code le rythme en notation préfixée
                       ;; '((num-canal1 num-pgchg1 num-expression1) (num-canal2 num-pgchg2 num-expression2) ...)
                       (larpege °nil) (arpegecar °0)    ;; si arpegecar > 0 arpege montant sinon si < 0 arpege descendant) 
                       (layer °1)
-                      (lcontrol °nil))
+                      (lcontrol °nil)
+                      (lcontrol-chge °nil)   ;; ajout le 11 septembre 2011. Permet l'écriture de controleurs à deux valeurs comme les pédales  (exemple: :lcontrol-chge °(64 127 0 3 2))
+                      (llayersynthe °nil)  ;; ajout le 9 avril 2012. Permet le changement de layer d'un echantilloneur (machfive2) 
+                                            ;;avec écriture de l'instrument dans finale  (exemple: :llayersynthe °((60 37) (64 42)) 
+                       (laccelerando °nil) (ehaccelerando °nil))  ;; exemple :laccelerando °(1/8 1 -1 (floo (i °0 °12)) 120)) ajout de Mai 2012, modifié novembre 2012
+
   #'(lambda (stime ctime etime reverse)
       (let* ((rs §rythme)
              (rythm-symb (prefixplus (code-rythme rs)))
              (dat (+ ctime (* noi (dur-midi rythm-symb))))) ;(format t "n-gnotes rythme=~S durée=~S date=~S ~%" rythm-symb (SPECIAL-EVALUATE rythm-symb) ctime)
         (if  ( <= dat etime)
-          (n-evenement chan rythm-symb haut vel
-                       sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol
-                       (date?) stime etime reverse)
+            (n-evenement chan rythm-symb haut vel
+                         sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol lcontrol-chge llayersynthe laccelerando ehaccelerando (date?) stime etime reverse)
           
           (p-abs etime)))))
 
-#| remplacé par ci-dessous le 24 Juin 2006
+#|
 
-(defun n-evenement (chan rythme haut vel
-                         sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol
-                         ctime stime etime reverse)
-  (let ((canal §chan)
-        (lma §lmaxaccord)
-        (lac §laccord)
-        (lec §lecar)) 
-    (when rythme 
-      
-      (if (> (SPECIAL-EVALUATE (first rythme)) 0)     ; 30 08 01
-        (let  ((p §proba)) 
-          (cond ((= p -1) (accord ctime canal nil (changder (first rythme)) §haut §vel §sil §stac §tril
-                                  §ecar lac lec lma §lmotifhaut §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol))
-                ((= p 0) (accord ctime canal nil (changder (first rythme)) 10 §vel §sil §stac §tril
-                                 §ecar lac lec lma §lmotifhaut §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol))
-                (t (accord ctime canal §pgchange (first rythme) §haut §vel §sil §stac §tril §ecar lac lec lma §lmotifhaut
-                           §ldurgliss §lhautgliss §lapog §ltransp §ltextexpres §larpege §arpegecar §layer §lcontrol))))
-        (accord ctime canal nil (first rythme) §haut §vel §sil §stac §tril §ecar lac lec lma §lmotifhaut
-                §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol))
-      
-      (n-evenement chan (cdr rythme) haut vel
-                   sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol
-                   (date?) stime etime reverse))))
-|#
+;; Voir la signification des key paramètres de n-gnotes dans gnotes ci-dessus
+;; le code ci-dessous a été remplacé en septembre 2011
 
 
 
 (defun n-evenement (chan rythme haut vel
                          sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol
                          ctime stime etime reverse)
-  ;(print (list "n-evenement" rythme ctime))
+  (print (list "n-evenement" rythme ctime))
   
   (when rythme
     
@@ -619,7 +797,7 @@ prefixplus, code le rythme en notation préfixée
           (lac §laccord)
           (lec §lecar)) 
       
-      
+      (print (list  "n-evenement" §lcontrol))
       
       (if (> (SPECIAL-EVALUATE (first rythme)) 0)     ; 30 08 01
         (let  ((p §proba)) 
@@ -635,7 +813,155 @@ prefixplus, code le rythme en notation préfixée
     (n-evenement chan (cdr rythme) haut vel
                  sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol
                  (date?) stime etime reverse)))
+|#
 
 
+;; nouveau au 29 septembre 2011 pour introduite les controleurs
+
+
+
+#|
+(defun n-evenement (chan rythme haut vel
+                         sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol lcontrol-chge llayersynthe laccelerando ctime stime etime reverse)
+
+  (let* ((canal §chan)
+         (lma §lmaxaccord)
+         (lac §laccord)
+         (lec §lecar)
+         (ctrlchge §lcontrol-chge)
+         (etat-ctrl-chge (aref *etat-ctrl-chge* canal))) (print (list "n-evenement lecar=" lec))
+    
+
+    (if rythme
+        (progn
+          (let ((lacceler §laccelerando))
+
+            (if lacceler 
+            (progn
+              (setq haut °0)
+              (setq vel °0)))
+   
+          (if ctrlchge
+              (if etat-ctrl-chge
+                  (let ((vn (first etat-ctrl-chge))
+                        (nbre (second etat-ctrl-chge))
+                        (pedale (third etat-ctrl-chge))
+                        (val 0))
+                    (if (>= vn nbre)
+                        (progn
+                          (if pedale
+                              (progn
+                                (setq val (second ctrlchge))
+                                (setq nbre (fourth ctrlchge)))
+                            (progn
+                              (setq val (third ctrlchge))
+                              (setq nbre (fifth ctrlchge))))
+                          (setq pedale (not pedale))
+                          (make-controle-chge canal lac val (first ctrlchge))
+                          (setf (aref *etat-ctrl-chge* canal) (list 1 nbre pedale)))
+
+                      (setf (aref *etat-ctrl-chge* canal) (list (+ 1 vn) nbre pedale))))
+
+
+                (progn
+                  (make-controle-chge canal lac (second ctrlchge) (first ctrlchge))
+                  (setf (aref *etat-ctrl-chge* canal) (list 1 (fourth ctrlchge) nil))))
+
+
+            (progn
+              (if (aref *etat-ctrl-chge* canal)
+                  (make-controle-chge canal lac (third ctrlchge) (first ctrlchge)))
+              (setf (aref *etat-ctrl-chge* canal) nil)))
+
+
+          (if (> (SPECIAL-EVALUATE (first rythme)) 0)     ; 30 08 01
+              (let  ((p §proba))
+            
+                (cond ((= p -1) (accord ctime canal nil (changder (first rythme)) §haut §vel §sil §stac §tril
+                                        §ecar lac lec lma §lmotifhaut §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol §llayersynthe lacceler))
+                      ((= p 0) (accord ctime canal nil (changder (first rythme)) 10 §vel §sil §stac §tril
+                                       §ecar lac lec lma §lmotifhaut §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol §llayersynthe lacceler))
+                      (t  (accord ctime canal §pgchange (first rythme) §haut §vel §sil §stac §tril §ecar lac lec lma §lmotifhaut
+                                  §ldurgliss §lhautgliss §lapog §ltransp §ltextexpres §larpege §arpegecar §layer §lcontrol §llayersynthe lacceler))))
+            (accord ctime canal nil (first rythme) §haut §vel §sil §stac §tril §ecar lac lec lma §lmotifhaut
+                    §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol §llayersynthe lacceler))
+    
+          (n-evenement chan (cdr rythme) haut vel
+                       sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol lcontrol-chge llayersynthe laccelerando (date?) stime etime reverse))))))
+
+|#
+
+
+;; ********** modif septembre 2012 ***************************************
+;; on évaluait (une fois de trop) les paramètres même si rythme était vide
+;; ***********************************************************************
+
+
+(defun n-evenement (chan rythme haut vel
+                         sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol lcontrol-chge llayersynthe laccelerando ecar-accelerando ctime stime etime reverse)
+
+  (if rythme
+      (let* ((canal §chan)
+             (lma §lmaxaccord)
+             (lac §laccord)
+             (lec §lecar)
+             (ctrlchge §lcontrol-chge)
+             (etat-ctrl-chge (aref *etat-ctrl-chge* canal))) 
+   
+        (if ctrlchge
+            (if etat-ctrl-chge
+                (let ((vn (first etat-ctrl-chge))
+                      (nbre (second etat-ctrl-chge))
+                      (pedale (third etat-ctrl-chge))
+                      (val 0))
+                  (if (>= vn nbre)
+                      (progn
+                        (if pedale
+                            (progn
+                              (setq val (second ctrlchge))
+                              (setq nbre (fourth ctrlchge)))
+                          (progn
+                            (setq val (third ctrlchge))
+                            (setq nbre (fifth ctrlchge))))
+                        (setq pedale (not pedale))
+                        (make-controle-chge canal lac val (first ctrlchge))
+                        (setf (aref *etat-ctrl-chge* canal) (list 1 nbre pedale)))
+
+                    (setf (aref *etat-ctrl-chge* canal) (list (+ 1 vn) nbre pedale))))
+
+
+              (progn
+                (make-controle-chge canal lac (second ctrlchge) (first ctrlchge))
+                (setf (aref *etat-ctrl-chge* canal) (list 1 (fourth ctrlchge) nil))))
+
+          (progn
+            (if (aref *etat-ctrl-chge* canal)
+                (make-controle-chge canal lac (third ctrlchge) (first ctrlchge)))
+            (setf (aref *etat-ctrl-chge* canal) nil)))
+
+        (let*  ((p §proba)
+               (llacelerando §laccelerando)
+               (mode (if llacelerando (fifth llacelerando)
+                       nil))
+               (ecar-h-acceler (if mode §ecar-accelerando     ; évaluation avec temps global (décembre 2012)
+                                 ecar-accelerando)))          ; évaluation ultérieure avec temps local (décembre 2012)
+            
+
+          (if (> (SPECIAL-EVALUATE (first rythme)) 0)     ; 30 08 01
+      
+              (cond ((= p -1) (accord ctime canal nil (changder (first rythme)) §haut §vel §sil §stac §tril
+                                      §ecar lac lec lma §lmotifhaut §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol §llayersynthe llacelerando ecar-h-acceler))
+                    ((= p 0) (accord ctime canal nil (changder (first rythme)) 10 §vel §sil §stac §tril
+                                     §ecar lac lec lma §lmotifhaut §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol §llayersynthe llacelerando ecar-h-acceler))
+                    (t  (accord ctime canal §pgchange (first rythme) §haut §vel §sil §stac §tril §ecar lac lec lma §lmotifhaut
+                                §ldurgliss §lhautgliss §lapog §ltransp §ltextexpres §larpege §arpegecar §layer §lcontrol §llayersynthe llacelerando ecar-h-acceler)))
+
+
+            (accord ctime canal nil (first rythme) §haut §vel §sil §stac §tril §ecar lac lec lma §lmotifhaut
+                    §ldurgliss §lhautgliss §lapog nil nil §larpege §arpegecar §layer §lcontrol §llayersynthe llacelerando ecar-h-acceler)))
+
+    
+        (n-evenement chan (cdr rythme) haut vel
+                     sil stac tril ecar proba laccord lecar lmaxaccord lmotifhaut ldurgliss lhautgliss lapog ltransp ltextexpres pgchange larpege arpegecar layer lcontrol lcontrol-chge llayersynthe laccelerando ecar-accelerando (date?) stime etime reverse))))
 
 
