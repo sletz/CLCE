@@ -1066,7 +1066,7 @@
     ; (if expressionlayer    ; envoi de la note bascule layer de l'chantilloneur
      ;    (progn
     ;       (p-abs (* noi dat))
-     ;      (midi-write-ev *out* (note :pitch (first expressionlayer)  :dur noi :vel 10 :chan (nchan chan) :port (nport chan)))))
+     ;      (p-write-abs(note :pitch (first expressionlayer)  :dur noi :vel 10 :chan (nchan chan) :port (nport chan)))))
           
 
 
@@ -1137,7 +1137,7 @@
               (setq expressionlayer nil)                       ;on reste dans le mme layer de l'chantilonneur
             (progn
               (p-abs (* noi dat))
-              (midi-write-ev *out* (note :pitch (first expressionlayer)  :dur noi :vel 10 :chan (nchan chan) :port (nport chan)))
+              (p-write-abs (note :pitch (first expressionlayer)  :dur noi :vel 10 :chan (nchan chan) :port (nport chan)))
               (setq num-expreslayer-en-cours (second expressionlayer)))) ) ; on a chang de layer et envoi de la note bascule layer de l'chantilloneur
 |#
 

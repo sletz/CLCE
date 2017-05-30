@@ -185,7 +185,7 @@
              (p-abs ctime)
              (if (>= (abs (- v vp)) §seuilv)  
                (progn
-                 (midi-write-ev *out* (ctrl-change :ctrl §num :value v :chan cha :port port))
+                 (p-write-abs (ctrl-change :ctrl §num :value v :chan cha :port port))
                  (controleur spechan num val seuilt seuilv stime (+ ctime s) etime reverse :vprecedent (g v)))
                (controleur spechan num val seuilt seuilv stime (+ ctime s) etime reverse :vprecedent (g vp)))))))
 
@@ -268,7 +268,7 @@
         (if (>= (abs (- v1 vp)) seuilv) 
           (progn
             (p-abs t1)
-            (midi-write-ev *out* (ctrl-change :ctrl num :value (floor v1) :chan canal :port port))
+            (p-write-abs (ctrl-change :ctrl num :value (floor v1) :chan canal :port port))
             (palier canal port num (+ t1 seuilt) t2 (proportion t1 t2 v1 v2 seuilt) v2 seuilt seuilv v1))
           (palier canal port num (+ t1 seuilt) t2 (proportion t1 t2 v1 v2 seuilt) v2 seuilt seuilv vp))))
 
@@ -329,7 +329,7 @@
       (if (not (= v vp))
         (progn
           (p-abs ctime)
-          (midi-write-ev *out* (ctrl-change :ctrl §num :value v :chan cha :port port))))
+          (p-write-abs (ctrl-change :ctrl §num :value v :chan cha :port port))))
       (gcont spechan stime (+ ctime §delta) etime reverse num val delta v))))
 
 
@@ -366,13 +366,13 @@
          (port (mod canal 15))
          (cha (- canal (* 15 port))))
     (p-abs (* date noi))
-    (midi-write-ev *out* (ctrl-change :ctrl num :value v  :chan cha :port port))))
+    (p-write-abs (ctrl-change :ctrl num :value v  :chan cha :port port))))
 
 (defun uncontroleur (date spechan num v)
   (let ((port (nport spechan))
          (cha (nchan spechan)))
     (p-abs (* date noi))
-    (midi-write-ev *out* (ctrl-change :ctrl num :value v  :chan cha :port port))))
+    (p-write-abs (ctrl-change :ctrl num :value v  :chan cha :port port))))
 ;;------------------------------------------------------------------------------
 
 
