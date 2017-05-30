@@ -254,7 +254,7 @@
   (midi-move *out*))
 
 ;;=======================================================
-;; Ecrite un evenement ˆ la date courante
+;; Ecrit un evenement a la date courante
 ;;=======================================================
 
 (defun p-write-abs (ev)
@@ -296,7 +296,7 @@
               (pgchg (cherchepgchange superchan pgchange))) ;(print (list "place-pgchange **********" pgchg (aref *etat-pgchge* superchan)))
          (if (and pgchg (not (= pgchg (aref *etat-pgchge* superchan))))
            (progn (setf (aref *etat-pgchge* superchan) pgchg)
-                  (midi-write-ev *out* (prog-change :pgm pgchg :chan chan :port port))))))
+                  (p-write-abs (prog-change :pgm pgchg :chan chan :port port))))))
 
 
 ;;--------------------------------------------------------------------- 21 12 2001
@@ -309,7 +309,7 @@
     (if (and pgchg (not (= pgchg (aref *etat-pgchge* superchan))))
       (progn (setf (aref *etat-pgchge* superchan) pgchg)
              (p-abs (* dat noi))
-             (midi-write-ev *out* (prog-change :pgm pgchg :chan chan :port port))))))
+             (p-write-abs (prog-change :pgm pgchg :chan chan :port port))))))
 
 #|
 (defun exemple ()
@@ -327,7 +327,7 @@
     
     (if (and pgchg (not (= pgchg (aref *etat-pgchge* superchan))))
       (progn (setf (aref *etat-pgchge* superchan) pgchg)
-             (midi-write-ev *out* (prog-change :pgm pgchg :chan chan :port port))))))
+             (p-write-abs (prog-change :pgm pgchg :chan chan :port port))))))
 
 
 ;;--------------------------------------------------------------------------------------------------------  21 12 2001
@@ -352,8 +352,8 @@
 
 (defun notes ( chan dur h1 ltransp vel pgchange port stac) ;(print (list chan (/ (date?) noi) dur h1 (round h1) pgchange "NOTES"))
   (if (> (date?) 0) (p-rel -1))   ; 28 08 01 on ne peut pas reculer le pointeur depuis la date 0 !
-  (midi-write-ev *out* (pitch-bend :chan chan :bend (round (* (/ 8192 *bend*) (- h1 (round h1)))) :port port))
-       ;(midi-write-ev *out* (ctrl-change :ctrl 7 :value 127  :chan chan :port port))   ; 28 08 01 ; suppression le 19 Février 2005 à cause des générateurs de volume
+  (p-write-abs (pitch-bend :chan chan :bend (round (* (/ 8192 *bend*) (- h1 (round h1)))) :port port))
+       ;(p-write-abs (ctrl-change :ctrl 7 :value 127  :chan chan :port port))   ; 28 08 01 ; suppression le 19 Février 2005 à cause des générateurs de volume
   (if (> (date?) 0) (p-rel +1))   ; 28 08 01
        
   (if pgchange (place-pgchange chan port pgchange))  ;; 24 10 01
@@ -364,11 +364,11 @@
         (p-abs 1))     ;; si la date est zéro on décale la date de la note de +1 pour envoyer avant cette note la note de changement de layersynth
     (if (> dur 32000) 
         (progn
-          (midi-write-ev *out* (key-on :pitch (transpose ltransp (round h1)) :vel vel :chan chan :port port))
-          (midi-write-ev *out* (key-off :pitch (transpose ltransp (round h1))  :vel vel :chan chan :port port) :date (+ (- (floor (* dur stac)) 1) (date?)))
+          (p-write-abs (key-on :pitch (transpose ltransp (round h1)) :vel vel :chan chan :port port))
+          (p-write-abs (key-off :pitch (transpose ltransp (round h1))  :vel vel :chan chan :port port) :date (+ (- (floor (* dur stac)) 1) (date?)))
           (p-abs d))
       (progn
-      (midi-write-ev *out* (note :pitch (transpose ltransp (round h1)) :dur (- (floor (* dur stac)) 1) :vel vel :chan chan :port port))
+      (p-write-abs (note :pitch (transpose ltransp (round h1)) :dur (- (floor (* dur stac)) 1) :vel vel :chan chan :port port))
       (p-abs d)))))
 
 
@@ -620,7 +620,7 @@
           (setq expressionlayer nil)                       ;on reste dans le même layer de l'échantilonneur
         (let ((d (date?)))
           (p-abs (- (* noi datenoire) 100))
-          (midi-write-ev *out* (note :pitch (first couplelayer)  :dur noi :vel 10 :chan (nchan superchan) :port (nport superchan)))
+          (p-write-abs (note :pitch (first couplelayer)  :dur noi :vel 10 :chan (nchan superchan) :port (nport superchan)))
           (p-abs d) ;on remet le pointeur à sa position antérieure
           (setf ( aref *etat-expressionlayer* superchan) (first couplelayer))
           (setq expressionlayer (second couplelayer)))
@@ -1770,7 +1770,7 @@
     (if (and (> dur *pas-temps*) (> (abs (- v1 v2)) 100))
       (progn
         (p-abs (+ dat (round(/ dur 2))))
-        (midi-write-ev *out* (pitch-bend :bend v2 :chan chan :port port))
+        (p-write-abs (pitch-bend :bend v2 :chan chan :port port))
         (ram-pitch chan port (round (/ dur 2))  (/ amb 2) off dat)
         (ram-pitch chan port (round (/ dur 2)) (/ amb 2) (+ off (/ amb 2)) 
                    (+ dat (round(/ dur 2))))))))
@@ -1778,13 +1778,13 @@
 (defun ramp-pitch (chan port dur amb off) ;(print "ramp-pitch")
   (if (not (= dur 0))               ;ajout du 24 08 01
     (progn
-  (midi-write-ev *out* (pitch-bend :bend (round(* *bend-demi-ton* off )) :chan chan :port port))
+  (p-write-abs(pitch-bend :bend (round(* *bend-demi-ton* off )) :chan chan :port port))
   ;(print "la dans ramp")
   (let* ((curdat (date?)))
     (if (not(= amb 0))
       (ram-pitch chan port dur amb off curdat)) ;(print "ici dans ramp")
     (p-abs (+ curdat (- dur 2)))     ;ajout du 24 08 01
-    (midi-write-ev *out* (pitch-bend :bend (round(* *bend-demi-ton* 
+    (p-write-abs (pitch-bend :bend (round(* *bend-demi-ton*
                                                     (+ off amb))) :chan chan :port port))))))
 
 ;;---------------------------------------
@@ -1976,15 +1976,15 @@
         (sv §(eval(third lcontrol)))) 
     (if (<= ctime etime)
         (progn
-          (midi-move *out* :date ctime)
+          (p-abs ctime)
           (if (>= (abs (- v vprecedent)) sv)
               (progn
-                (midi-write-ev *out* (ctrl-change :ctrl num :value v :chan chan :port port))
+                (p-write-abs (ctrl-change :ctrl num :value v :chan chan :port port))
                 (make-cont chan port lcontrol stime (+ ctime steptime) etime reverse steptime v))
             (make-cont chan port lcontrol stime (+ ctime steptime) etime reverse steptime vprecedent)))
       (progn
         (p-abs etime)
-        (midi-write-ev *out* (ctrl-change :ctrl num :value 110 :chan chan :port port)) ;on écrit un volume "normal" à la fin de la note
+        (p-write-abs (ctrl-change :ctrl num :value 110 :chan chan :port port)) ;on écrit un volume "normal" à la fin de la note
         (p-abs stime)))))
 
 
@@ -2007,7 +2007,7 @@
   (if lcanaux
       (let ((chan (nchan (car lcanaux)))
          (port (nport (car lcanaux))))
-         (midi-write-ev *out* (ctrl-change :ctrl numcontrol :value val :chan chan :port port))
+         (p-write-abs (ctrl-change :ctrl numcontrol :value val :chan chan :port port))
         (make-controle-ch (cdr lcanaux) val numcontrol))))
        
 
