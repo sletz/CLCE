@@ -252,6 +252,13 @@
 (defun date? ()
   (midi-move *out*))
 
+;;=======================================================
+;; Ecrite un evenement ˆ la date courante
+;;=======================================================
+
+(defun p-write-abs (ev)
+  (midi-send-im *out* ev))
+
 
 
 

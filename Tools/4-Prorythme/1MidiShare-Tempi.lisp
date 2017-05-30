@@ -142,9 +142,9 @@
 ;; Tempo de 120 à la date 0
 ;; ******************************************************************
 
-(defun place-tempo (date temp &key (sequence *out*))
-  (midi-move sequence :date (* noi date))
-  (midi-send-im sequence (tempo-change :tempo (convert-tempo temp))))
+(defun place-tempo (date temp)
+  (p-abs (* noi date))
+  (p-write-abs (tempo-change :tempo (convert-tempo temp))))
 
 
 
@@ -163,24 +163,24 @@
 ;; Accelerando de 60 à 120 entre les dates 0 et 8 noires
 ;; *****************************************************************
 
-(defun var-tempo (deb fin temp &key (sequence *out*))
+(defun var-tempo (deb fin temp)
   (let* ((stime (* (funcall deb 0 0 1 nil) noi))
          (etime (* (funcall fin 0 1 1 nil) noi))
          (ctime stime)
          (reverse nil))
-    (midi-move sequence :date stime)
-    (midi-send-im sequence (tempo-change :tempo (convert-tempo §temp)))
-    (vartempo temp sequence (floor (/ (+ stime etime) 2)) stime etime reverse stime etime)))
+    (p-abs stime)
+    (p-write-abs (tempo-change :tempo (convert-tempo §temp)))
+    (vartempo temp (floor (/ (+ stime etime) 2)) stime etime reverse stime etime)))
          
-(defun vartempo (temp sequence ctime stime etime reverse a1 a2)
+(defun vartempo (temp ctime stime etime reverse a1 a2)
   (let ((delta (- a2 a1))
         (tempo §temp))
     (if (> delta noi)
       (progn
-        (midi-move sequence :date ctime)
-        (midi-send-im sequence (tempo-change :tempo (convert-tempo tempo)))
-        (vartempo temp sequence (/(+ a2 (* 3 a1)) 4) stime etime reverse a1 (/(+ a1 a2)2))
-        (vartempo temp sequence (/(+ a1 (* 3 a2)) 4) stime etime reverse (/(+ a1 a2)2) a2)))))
+        (p-abs ctime)
+        (p-write-abs (tempo-change :tempo (convert-tempo tempo)))
+        (vartempo temp (/(+ a2 (* 3 a1)) 4) stime etime reverse a1 (/(+ a1 a2)2))
+        (vartempo temp (/(+ a1 (* 3 a2)) 4) stime etime reverse (/(+ a1 a2)2) a2)))))
 
 
 ;;==============================================================================
