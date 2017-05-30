@@ -211,32 +211,47 @@
   (init-array *etat-ctrl-chge2* nil)
   (init-array *etat-expressionlayer* nil))
 
-(defun init ()                        ;; Initialisation complète avant calculs
+;; Initialisation complète avant calculs
+
+;;(defun init ()
+;;  (init-listes)
+;;  (setq *totrythm* 0)
+;;  (p-abs 0)
+;;  (midi-clear *out*))
+
+(defun init ()
   (init-listes)
   (setq *totrythm* 0)
   (p-abs 0)
-  (midi-clear *out*))
-
+  (setq *out-seq* (midi-new-seq)))
 
 
 ;;==============================================================================
 ;;            GESTION DES POINTEURS TEMPORELS
 ;;==============================================================================
 
+(defvar *out-seq* (midi-new-seq))
+(defvar *out-date* 0)
 
 ;;=======================================================
 ;; Place le pointeur à la date absolue "date"
 ;;=======================================================
           
+;;(defun p-abs (date)
+;;  (midi-move *out* :date date))
+
 (defun p-abs (date)
-  (midi-move *out* :date date))
+  (setq *out-date* date))
 
 ;;=======================================================
 ;;Déplace le pointeur d'une durée "dur"
 ;;=======================================================
           
+;;(defun p-rel (dur)
+;;  (midi-move *out* :dur dur))
+
 (defun p-rel (dur)
-  (midi-move *out* :dur dur))
+ (incf *out-date* dur)) 
 
 ;;=======================================================
 ;; Retourne l'événement courant
@@ -250,18 +265,22 @@
 ;; Rend la date courante
 ;;=======================================================
           
+;;(defun date? ()
+;;  (midi-move *out*))
+
 (defun date? ()
-  (midi-move *out*))
+   *out-date*)
 
 ;;=======================================================
 ;; Ecrit un evenement a la date courante
 ;;=======================================================
 
+;;(defun p-write-abs (ev)
+;;  (midi-send-im *out* ev))
+
 (defun p-write-abs (ev)
-  (midi-send-im *out* ev))
-
-
-
+  (date ev *out-date*)
+  (midi-add-seq *out-seq* ev))
 
 ;;==============================================================================
 ;;                           NOTES: NOTE A HAUTEUR NON ENTIERE
