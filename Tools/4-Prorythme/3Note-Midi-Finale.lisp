@@ -384,7 +384,8 @@
     (if (> dur 32000) 
         (progn
           (p-write-abs (key-on :pitch (transpose ltransp (round h1)) :vel vel :chan chan :port port))
-          (p-write-abs (key-off :pitch (transpose ltransp (round h1))  :vel vel :chan chan :port port) :date (+ (- (floor (* dur stac)) 1) (date?)))
+          (p-abs (+ (- (floor (* dur stac)) 1) (date?)))
+          (p-write-abs (key-off :pitch (transpose ltransp (round h1)) :vel vel :chan chan :port port))
           (p-abs d))
       (progn
       (p-write-abs (note :pitch (transpose ltransp (round h1)) :dur (- (floor (* dur stac)) 1) :vel vel :chan chan :port port))

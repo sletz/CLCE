@@ -11,6 +11,11 @@
 ;; (dur-midi (prefixplus (code-rythme  '(4/5dc (1/4 -1))))) --> 1
 ;; gi-rythme et gi-rythme2 nouveau générateurs de rythme 12 - 04 -05
 
+; retourne la durée d'un rythme en noires
+(defun vrai-dur (r)
+  (dur-midi (prefixplus (code-rythme  r))))
+
+; (dur-midi (prefixplus (code-rythme  '(1 + 2/3c (1/2 + 2/3dc (1/2 1/4) + 1/2) + 10)))) --> 12
 
 ;; ------------
 (defvar dc1)
