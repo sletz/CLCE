@@ -241,7 +241,7 @@
 ;;  (midi-move *out* :date date))
 
 (defun p-abs (date)
-  (setq *out-date* date))
+  (setq *out-date* (max 0 date)))
 
 ;;=======================================================
 ;;Déplace le pointeur d'une durée "dur"
