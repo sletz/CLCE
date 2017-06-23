@@ -598,10 +598,22 @@
   #'(lambda (stime ctime etime reverse)
       (every #'(lambda (x) x) (mapcar #'(lambda (g) §g) lg))))
 
+
 ;; ------------------------------- GNOT : non logique
 
 (defun  gnot (g)
   (appl °not g))
+
+(defun  ggnot (g)
+  #'(lambda (stime ctime etime reverse)
+      (not §g)))
+
+;; ------------------------------- GMOD : modulo
+
+(defun  gmod (g1 g2)
+  #'(lambda (stime ctime etime reverse)
+      (mod §g1 §g2)))
+
 
 ;; ------------------------------- GATE : vrai pendant n1 faux pendant n2
 
