@@ -6,6 +6,7 @@
 ;; Version2 avec découpage en zones géographiques
 ;;
 ;; Suppression des séquences 10-13-21-23-24 avec voix abondantes - 23 mars 2017
+;; Correction de la fonction place-prog le 4-02-2019
 ;;
 ;; ************************************************************************************
 
@@ -426,12 +427,11 @@ permet de passer d'un layer à un autre
 
 ;; adressage des layers (groupes) définis par les listes m(i) pour les ports A et B 
 
-(defun place-prog (date prog  sequence)
-  (midi-move sequence :date date)
+(defun place-prog (date prog)
+  (p-abs date)
   (dotimes (chan 16)
-  (midi-send-im sequence (ctrl-change :ctrl 9 :value (car prog) :chan chan :port 0)))
-  (dotimes (chan 16)
-  (midi-send-im sequence (ctrl-change :ctrl 9 :value (cadr prog) :chan chan :port 1))))
+    (p-write-abs (ctrl-change :ctrl 9 :value (car prog) :chan chan :port 0))
+    (p-write-abs (ctrl-change :ctrl 9 :value (car prog) :chan chan :port 1))))
 
 (defvar *gaccord* °(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15))
 (defvar *gaccord-demi* °(0 2 4 6 8 10 12 14))
@@ -670,7 +670,7 @@ permet de passer d'un layer à un autre
   (print-dialog "TEST")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   ;; ************* silence                                                                    
   (prorythme (s °(0 1 2 3 4 5 6 7 )) °0 °200                
@@ -701,7 +701,7 @@ permet de passer d'un layer à un autre
   (print-dialog "CERCLE1")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   ;; ************* silence                                                                    
   (prorythme (s *traj-total-direct*) °0 °1000                
@@ -732,7 +732,7 @@ permet de passer d'un layer à un autre
   (print-dialog "TEST1BIS")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   ;; ************* silence                                                                    
   (prorythme °0 °0 °800                
@@ -762,7 +762,7 @@ permet de passer d'un layer à un autre
   (print-dialog "CERCLE2")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   ;; ************* silence                                                                    
   (prorythme (s *traj-total-direct*) °0 °1000                
@@ -792,7 +792,7 @@ permet de passer d'un layer à un autre
   (print-dialog "TUTTI")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   ;; ************* silence                                                                    
   (prorythme °0 °0 °1000                
@@ -825,7 +825,7 @@ permet de passer d'un layer à un autre
   (print-dialog "ALTERNE")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   ;; ************* silence                                                                    
   (prorythme (alt (rep (s *traj-total-direct*) °5) (rep (shift °1  (s *traj-total-direct*)) °5)) °0 °1000                
@@ -854,7 +854,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 1")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   ;; ************* silence                                                                    
@@ -890,7 +890,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 2")
   
   ;; ************* prog-change  
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   ;; ************* fond général nuit synchro  proba 1/2
@@ -941,7 +941,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 3")
   
   ;; ************* prog-change  
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -1067,7 +1067,7 @@ permet de passer d'un layer à un autre
   
   ;; ************* prog-change 
 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -1200,7 +1200,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 5")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -1291,7 +1291,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 6")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
 
 
@@ -1439,7 +1439,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 7")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -1562,7 +1562,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 8")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -1666,7 +1666,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 9")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -1777,7 +1777,7 @@ permet de passer d'un layer à un autre
   
   
   ;; ************* prog-change 
-  (place-prog 0 m7 *out*)
+  (place-prog 0 m7)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -1883,7 +1883,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 11")
   
   ;; ************* prog-change 
-  (place-prog 0 m4 *out*)
+  (place-prog 0 m4)
   (place-tempo 0 60)
 
 
@@ -2017,7 +2017,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 12")
   
   ;; ************* prog-change 
-  (place-prog 0 m8 *out*)
+  (place-prog 0 m8)
   (place-tempo 0 60)
 
 
@@ -2112,7 +2112,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 13")
   
   ;; ************* prog-change 
-  (place-prog 0 m5 *out*)
+  (place-prog 0 m5)
   (place-tempo 0 60)
 
 
@@ -2299,7 +2299,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 14")
   
   ;; ************* prog-change 
-  (place-prog 0 m5 *out*)
+  (place-prog 0 m5)
   (place-tempo 0 60)
 
 
@@ -2403,7 +2403,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 15")
   
   ;; ************* prog-change 
-  (place-prog 0 m5 *out*)
+  (place-prog 0 m5)
   (place-tempo 0 60)
 
 
@@ -2570,7 +2570,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 16")
   
   ;; ************* prog-change 
-    (place-prog 0 m5 *out*)
+    (place-prog 0 m5)
   (place-tempo 0 60)
 
 
@@ -2685,7 +2685,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 17")
   
   ;; ************* prog-change 
-  (place-prog 0 m5 *out*)
+  (place-prog 0 m5)
   (place-tempo 0 60)
 
 
@@ -2851,7 +2851,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 18")
   
   ;; ************* prog-change 
-  (place-prog 0 m5 *out*)
+  (place-prog 0 m5)
   (place-tempo 0 60)
 
 
@@ -2983,7 +2983,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 19")
   
   ;; ************* prog-change 
-  (place-prog 0 m5 *out*)
+  (place-prog 0 m5)
   (place-tempo 0 60)
 
 
@@ -3123,7 +3123,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 20")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
 
 
@@ -3263,7 +3263,7 @@ permet de passer d'un layer à un autre
   
   
   ;; ************* prog-change 
-  (place-prog 0 m7 *out*)
+  (place-prog 0 m7)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -3319,7 +3319,7 @@ permet de passer d'un layer à un autre
   
   
   ;; ************* prog-change 
-  (place-prog 0 m7 *out*)
+  (place-prog 0 m7)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -3375,7 +3375,7 @@ permet de passer d'un layer à un autre
   
   
   ;; ************* prog-change 
-  (place-prog 0 m7 *out*)
+  (place-prog 0 m7)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -3419,7 +3419,7 @@ permet de passer d'un layer à un autre
   
   
   ;; ************* prog-change 
-  (place-prog 0 m7 *out*)
+  (place-prog 0 m7)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -3474,7 +3474,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 25")
   
   ;; ************* prog-change 
-  (place-prog 0 m3 *out*)
+  (place-prog 0 m3)
   (place-tempo 0 60)
 
 
@@ -3596,7 +3596,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 26")
   
   ;; ************* prog-change 
-  (place-prog 0 m4 *out*)
+  (place-prog 0 m4)
   (place-tempo 0 60)
 
 
@@ -3708,7 +3708,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 27")
   
   ;; ************* prog-change 
-  (place-prog 0 m8 *out*)
+  (place-prog 0 m8)
   (place-tempo 0 60)
 
 
@@ -3821,7 +3821,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 28")
   
   ;; ************* prog-change 
-  (place-prog 0 m5 *out*)
+  (place-prog 0 m5)
   (place-tempo 0 60)
 
 
@@ -4158,7 +4158,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 29")
   
   ;; ************* prog-change 
-  (place-prog 0 m5 *out*)
+  (place-prog 0 m5)
   (place-tempo 0 60)
 
 
@@ -4269,7 +4269,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 30")
   
   ;; ************* prog-change 
-  (place-prog 0 m9 *out*)
+  (place-prog 0 m9)
   (place-tempo 0 60)
 
   (let ((deb2 (g (car (l 1 deb))))
@@ -4351,7 +4351,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 31")
   
   ;; ************* prog-change 
-  (place-prog 0 m9 *out*)
+  (place-prog 0 m9)
   (place-tempo 0 60)
 
 
@@ -4457,7 +4457,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 32")
   
   ;; ************* prog-change 
-  (place-prog 0 m9 *out*)
+  (place-prog 0 m9)
   (place-tempo 0 60)
 
   (let ((deb2 (g (car (l 1 deb))))
@@ -4496,7 +4496,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 33")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -4546,7 +4546,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 34")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -4596,7 +4596,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 35")
   
   ;; ************* prog-change 
-  (place-prog 0 m7 *out*)
+  (place-prog 0 m7)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
@@ -4637,7 +4637,7 @@ permet de passer d'un layer à un autre
   (print-dialog "SEQUENCE 36")
   
   ;; ************* prog-change 
-  (place-prog 0 m2 *out*)
+  (place-prog 0 m2)
   (place-tempo 0 60)
   
   (let ((deb2 (g (car (l 1 deb))))
